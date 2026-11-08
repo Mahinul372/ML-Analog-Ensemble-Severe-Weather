@@ -140,12 +140,84 @@ print(result["analogs"])          # the 10 closest historical timestamps
 ```
 ├── data/
 │   └── atlanta_weather_archive.csv   # 8,760 hourly rows, Atlanta GA
+├── notebooks/
+│   └── deep_anen_severe_weather.ipynb  # Phase 2 Colab notebook (GPU)
+├── models/
+│   ├── deep_anen_weights.pth         # encoder weights (generated on run)
+│   └── deep_anen_weights.json        # text-safe state dict
+├── plots/
+│   ├── fig1_event_timeseries.png/.svg
+│   └── fig2_metrics_bars.png/.svg
+├── metrics/
+│   └── deep_anen_metrics.json
 ├── fetch_data.py                     # Open-Meteo data pipeline
 ├── analog_ensemble.py                # AnalogEnsembleEngine (K=10)
 ├── run_pipeline.py                   # end-to-end runner + verification
 ├── requirements.txt
 └── README.md
 ```
+
+### Run the Phase 2 notebook
+
+Open
+[`notebooks/deep_anen_severe_weather.ipynb`](notebooks/deep_anen_severe_weather.ipynb)
+in Google Colab, select a GPU runtime (*Runtime → Change runtime type →
+T4 GPU*), then *Run all*. It trains the encoder (30 epochs), evaluates on
+130 test storm events, and regenerates the figures, weights, and metrics.
+
+## Phase 2 — Deep Analog Ensemble (Deep-AnEn)
+
+**Executive summary.** Phase 1 searched for analogs in standardized *raw*
+feature space. Phase 2 learns the similarity metric: a PyTorch encoder maps
+the 4-D forecast vector into a 16-D latent space trained (30 epochs, MSE,
+Adam) to predict observed wind gusts, and analog search runs in that learned
+space. On 130 held-out test storm events (observed gust ≥ 35 km/h,
+2026-09-01 → 2026-11-01), Deep-AnEn cuts gust RMSE by **40.6%** and CRPS by
+**61.1%** versus raw NWP. Full runnable notebook:
+[`notebooks/deep_anen_severe_weather.ipynb`](notebooks/deep_anen_severe_weather.ipynb)
+(Google Colab, GPU runtime).
+
+**Model structure — `DeepAnalogEncoder`:**
+
+```
+forecast (4) ──▶ Linear(4 → 32) ──▶ ReLU ──▶ Dropout(0.2)
+             ──▶ Linear(32 → 16) ──▶ latent embedding z (16-D)
+z ──▶ Linear(16 → 1) ──▶ predicted standardized gust (training head only)
+```
+
+Analog search: encode the target forecast to `z`, exclude a ±7-day window,
+take the K = 15 nearest training-period embeddings (Euclidean), and build
+the ensemble from their observed gusts. Splits are strictly chronological
+(train ≤ 2026-08-15, validation to 2026-08-31, test from 2026-09-01) and
+analogs are drawn from the training archive only.
+
+**Scores — 130 test storm events (obs gust ≥ 35 km/h):**
+
+| Forecast | RMSE (km/h) | CRPS (km/h) |
+|---|---|---|
+| Raw NWP | 13.23 | 11.42 |
+| **Deep-AnEn (K=15)** | **7.86** | **4.45** |
+| **Skill improvement** | **+40.6%** | **+61.1%** |
+
+![Severe wind event, 2026-10-10](plots/fig1_event_timeseries.svg)
+*Figure 1 — Most severe test event (peak observed gust 71.6 km/h,
+2026-10-10 09:00 UTC, ±48 h): raw NWP vs. observed gusts vs. Deep-AnEn
+mean with 90% envelope (p5–p95).*
+
+![RMSE and CRPS comparison](plots/fig2_metrics_bars.svg)
+*Figure 2 — RMSE and CRPS: raw NWP vs. Deep-AnEn over the 130 test storm
+events.*
+
+**Honest limitation.** Deep-AnEn improves the *average* storm markedly, but
+the ensemble mean still under-predicts the single most extreme peak (52 vs.
+71.6 km/h observed in Figure 1); the 90% envelope reaches ~65 km/h. Extreme
+tails remain the hard case — Phase 3 work (longer archive, K tuning,
+additional predictors).
+
+**Artifacts:** weights in `models/deep_anen_weights.pth` (generated on run)
+with a text-safe JSON state dict at `models/deep_anen_weights.json`;
+metrics in `metrics/deep_anen_metrics.json`; figures in `plots/` (PNG 300 dpi
++ SVG). The notebook regenerates all of them end-to-end.
 
 ## Roadmap
 

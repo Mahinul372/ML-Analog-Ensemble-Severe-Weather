@@ -1,0 +1,11 @@
+{
+  "n_test_storm_events": 130,
+  "rmse_raw_nwp_kmh": 13.23,
+  "rmse_deep_anen_kmh": 7.86,
+  "rmse_skill_pct": 40.6,
+  "crps_raw_nwp_kmh": 11.42,
+  "crps_deep_anen_kmh": 4.45,
+  "crps_skill_pct": 61.1,
+  "peak_test_event": "2026-10-10 09:00:00+00:00",
+  "peak_test_gust_kmh": 71.6
+}
