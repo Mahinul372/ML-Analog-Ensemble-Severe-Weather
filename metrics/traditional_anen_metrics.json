@@ -1,0 +1,9 @@
+{
+  "n_test_storm_events": 130,
+  "rmse_raw_nwp_kmh": 13.23,
+  "rmse_traditional_anen_kmh": 7.43,
+  "rmse_skill_pct": 43.9,
+  "crps_raw_nwp_kmh": 11.42,
+  "crps_traditional_anen_kmh": 4.15,
+  "crps_skill_pct": 63.7
+}

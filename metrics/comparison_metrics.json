@@ -1,0 +1,25 @@
+{
+  "n_test_storm_events": 130,
+  "methods": {
+    "Raw NWP": {
+      "rmse_kmh": 13.23,
+      "crps_kmh": 11.42
+    },
+    "Traditional AnEn": {
+      "rmse_kmh": 7.43,
+      "crps_kmh": 4.15
+    },
+    "Deep-AnEn": {
+      "rmse_kmh": 7.86,
+      "crps_kmh": 4.45
+    }
+  },
+  "rmse_skill_vs_raw_pct": {
+    "Traditional AnEn": 43.9,
+    "Deep-AnEn": 40.6
+  },
+  "crps_skill_vs_raw_pct": {
+    "Traditional AnEn": 63.7,
+    "Deep-AnEn": 61.1
+  }
+}

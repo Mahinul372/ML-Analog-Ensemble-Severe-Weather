@@ -141,15 +141,22 @@ print(result["analogs"])          # the 10 closest historical timestamps
 ├── data/
 │   └── atlanta_weather_archive.csv   # 8,760 hourly rows, Atlanta GA
 ├── notebooks/
-│   └── deep_anen_severe_weather.ipynb  # Phase 2 Colab notebook (GPU)
+│   ├── deep_anen_severe_weather.ipynb  # Phase 2 Colab notebook (GPU)
+│   └── comparison_analysis.ipynb       # Phase 3 3-way benchmark
 ├── models/
 │   ├── deep_anen_weights.pth         # encoder weights (generated on run)
 │   └── deep_anen_weights.json        # text-safe state dict
 ├── plots/
 │   ├── fig1_event_timeseries.png/.svg
-│   └── fig2_metrics_bars.png/.svg
+│   ├── fig2_metrics_bars.png/.svg
+│   ├── 3way_method_comparison_timeseries.png/.svg
+│   └── rmse_crps_benchmark_barchart.png/.svg
 ├── metrics/
-│   └── deep_anen_metrics.json
+│   ├── deep_anen_metrics.json
+│   ├── traditional_anen_metrics.json
+│   └── comparison_metrics.json
+├── data_prep.py                      # shared protocol: split/scaler/events
+├── traditional_anen.py               # Traditional AnEn engine (K=15)
 ├── fetch_data.py                     # Open-Meteo data pipeline
 ├── analog_ensemble.py                # AnalogEnsembleEngine (K=10)
 ├── run_pipeline.py                   # end-to-end runner + verification
@@ -218,6 +225,65 @@ additional predictors).
 with a text-safe JSON state dict at `models/deep_anen_weights.json`;
 metrics in `metrics/deep_anen_metrics.json`; figures in `plots/` (PNG 300 dpi
 + SVG). The notebook regenerates all of them end-to-end.
+
+## Phase 3 — Traditional AnEn Benchmark & 3-Way Comparison
+
+**Executive summary.** Phase 2 beat raw NWP by a wide margin — but is the
+*learned* latent space actually better than the *classical* Analog Ensemble?
+On the exact same 130 untouched test storm events, **Traditional AnEn
+narrowly beats Deep-AnEn on both scores**. Both analog methods crush raw
+NWP; the learned space adds no advantage on one year of data with four
+predictors. That is the finding, and the benchmark exists to make it
+checkable: one shared protocol, one timestamp list, recomputed scores.
+
+**Shared protocol (`data_prep.py`).** The dataset, chronological
+train/validation/test split, feature scaler, storm-event subset, and
+episode rule are defined once in `data_prep.py` and imported by every
+experiment — never recreated per method. The scaler is fit on the
+training split only. The evaluation subset is the 130 test-window
+timestamps with observed gust ≥ 35 km/h, built once and shared by all
+three methods (the comparison notebook asserts all three evaluated
+identical timestamps). Deep-AnEn scores are recomputed from the saved
+weights and checked against the Phase 2 metric file.
+
+**Complete 3-way model evaluation table — 130 test storm events:**
+
+| Method | RMSE | CRPS |
+|---|---|---|
+| Raw NWP | 13.23 | 11.42 |
+| Traditional AnEn | 7.43 | 4.15 |
+| Deep-AnEn | 7.86 | 4.45 |
+
+Skill vs. raw NWP: Traditional AnEn +43.9% RMSE / +63.7% CRPS;
+Deep-AnEn +40.6% RMSE / +61.1% CRPS.
+
+![3-way severe-episode comparison](plots/3way_method_comparison_timeseries.svg)
+*Figure 1 — Severe episode selected by a predefined rule: the contiguous
+run of test-window hours with observed gust ≥ 35 km/h that has the
+highest observed peak (2026-10-10 01:00–13:00 UTC, 13 h, peak 71.6 km/h),
+plotted with ±24 h padding. Ground truth vs. raw NWP vs. Traditional
+AnEn mean with 90% prediction interval (p5–p95) vs. Deep-AnEn mean with
+90% prediction interval.*
+
+![RMSE and CRPS benchmark](plots/rmse_crps_benchmark_barchart.svg)
+*Figure 2 — RMSE and CRPS across all three methods on the identical
+130-event test set.*
+
+**Scoring & terminology notes.** CRPS for both AnEn variants is the
+empirical ensemble CRPS over the 15 members; for deterministic Raw NWP
+it is the mean absolute error, the exact single-member equivalent of
+ensemble CRPS. The 90% bands are **prediction intervals** (5th–95th
+percentile of the 15 members), not confidence intervals — and with 15
+members those percentile estimates are coarse (each member spans ~6.7%
+of the probability mass; p5/p95 sit near the 1st and 15th order
+statistics).
+
+**Artifacts:** `traditional_anen.py` (classical 4-D Euclidean engine),
+`notebooks/comparison_analysis.ipynb` (standalone Colab benchmark),
+`metrics/comparison_metrics.json` and
+`metrics/traditional_anen_metrics.json`, figures in `plots/` (PNG 300 dpi
++ SVG). Full notebook:
+[`notebooks/comparison_analysis.ipynb`](notebooks/comparison_analysis.ipynb).
 
 ## Roadmap
 
