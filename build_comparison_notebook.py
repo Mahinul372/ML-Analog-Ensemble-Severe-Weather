@@ -102,6 +102,7 @@ from data_prep import (
     FEATURES,
     K,
     TARGET,
+    TRAIN_END,
     fit_feature_scaler,
     get_severe_episode,
     get_storm_events,
@@ -196,7 +197,12 @@ print(f"Latent training archive: {train_z.shape}")
 
 
 def deep_find_analogs(target_timestamp, K=K):
-    \"\"\"K nearest training-period analogs in the 16-D latent space.\"\"\"
+    \"\"\"K nearest training-period analogs in the 16-D latent space.
+
+    Returns a dict with the same shape as TraditionalAnalogEnsemble
+    .find_analogs(): the 15-member observed-gust ensemble plus the analog
+    timestamps and distances (needed by the verification audit).
+    \"\"\"
     target = pd.to_datetime(target_timestamp, utc=True)
     row = df[df["timestamp"] == target]
     x = torch.tensor(feat_scaler.transform(row[FEATURES]),
@@ -206,8 +212,17 @@ def deep_find_analogs(target_timestamp, K=K):
     delta_h = (train_df["timestamp"] - target).dt.total_seconds() / 3600.0
     cand_idx = np.where((delta_h.abs() > EXCLUSION_HOURS).values)[0]
     dists = np.linalg.norm(train_z[cand_idx] - z, axis=1)
-    analog_idx = cand_idx[np.argsort(dists)[:K]]
-    return train_df.loc[analog_idx, TARGET].to_numpy(dtype=float)"""))
+    order = np.argsort(dists)[:K]
+    analog_idx = cand_idx[order]
+    members = train_df.loc[analog_idx, TARGET].to_numpy(dtype=float)
+    return {
+        "target_timestamp": str(target),
+        "ensemble_members": members,
+        "analogs": [
+            {"timestamp": str(train_df.loc[i, "timestamp"]), "distance": float(d)}
+            for i, d in zip(analog_idx, dists[order])
+        ],
+    }"""))
 
 # ---------------------------------------------------------------- 4. §2 md
 cells.append(nbf.v4.new_markdown_cell("""## 2. The Three Methods on the Identical Test Set
@@ -238,7 +253,7 @@ for ts in EVENT_TIMESTAMPS:
     raw_fcst.append(row["fcst_gust"])
     obs.append(row[TARGET])
     trad_members.append(trad.find_analogs(ts, K=K)["ensemble_members"])
-    deep_members.append(deep_find_analogs(ts, K=K))
+    deep_members.append(deep_find_analogs(ts, K=K)["ensemble_members"])
     evaluated_ts.append(ts)
 
 # Guard: all three methods evaluated the exact same 130 timestamps.
@@ -282,6 +297,8 @@ assert abs(scores["Deep-AnEn"][1] - saved_deep["crps_deep_anen_kmh"]) < 0.05, \\
     "Deep-AnEn CRPS does not reproduce Phase 2!"
 assert abs(scores["Traditional AnEn"][0] - saved_trad["rmse_traditional_anen_kmh"]) < 0.05, \\
     "Traditional AnEn RMSE mismatch!"
+assert abs(scores["Traditional AnEn"][1] - saved_trad["crps_traditional_anen_kmh"]) < 0.05, \\
+    "Traditional AnEn CRPS mismatch!"
 print("\\nConsistency check passed: recomputed scores match the saved "
       "Phase 2 and Phase 3 metric files.")
 
@@ -303,6 +320,86 @@ comparison = {
 with open("metrics/comparison_metrics.json", "w") as f:
     json.dump(comparison, f, indent=2)
 print(json.dumps(comparison, indent=2))"""))
+
+# ------------------------------------------------------- 5b. Audit md
+cells.append(nbf.v4.new_markdown_cell("""## 2b. Verification Audit — the Six Checks
+
+The shared protocol in `data_prep.py` makes most of the items below true
+*by construction*, but construction is not verification. This cell checks
+each one explicitly, with asserts, over all 130 events × 15 members ×
+2 methods (3,900 analog selections):
+
+1. **Same eligible training pool** — both methods' analogs come from the
+   identical 6,888-row training frame.
+2. **±7-day exclusion applied correctly** — the closest selected analog
+   of any event is more than 168 h from its target.
+3. **No test observations in analog selection** — every analog timestamp
+   is a training timestamp (≤ 2026-08-15), and every ensemble member
+   equals the training observation at that timestamp.
+4. **Identical preprocessing/scaling** — both scalers have identical
+   parameters and produce identical scaled matrices; the Deep-AnEn
+   checkpoint's saved scaler matches too.
+5. **Traditional AnEn CRPS matches its saved metric** (the evaluation
+   cell above already asserts this alongside RMSE).
+6. **Timestamps unique, arrays valid** — the 130 event timestamps are
+   unique, all arrays are finite and correctly shaped, members lie
+   within the observed gust range."""))
+
+# ------------------------------------------------------- 5c. Audit code
+cells.append(nbf.v4.new_code_cell("""# --- Verification audit (all 130 events x 15 members x 2 methods) -------------
+print("AUDIT 1 — same eligible historical training pool")
+assert trad.train_df["timestamp"].equals(train_df["timestamp"])
+assert len(trad.train_df) == len(train_df) == 6888
+assert trad.exclusion_hours == EXCLUSION_HOURS
+print("  PASS: both methods draw analogs from the identical 6,888-row train pool")
+
+print("AUDIT 2 — ±7-day exclusion applied correctly")
+print("AUDIT 3 — no test observations in analog selection")
+train_obs = dict(zip(train_df["timestamp"], train_df[TARGET]))
+train_ts = set(train_df["timestamp"])
+min_gap_h = float("inf")
+n_checked = 0
+for ts in EVENT_TIMESTAMPS:
+    for res in (trad.find_analogs(ts, K=K), deep_find_analogs(ts, K=K)):
+        for a, member in zip(res["analogs"], res["ensemble_members"]):
+            a_ts = pd.to_datetime(a["timestamp"], utc=True)
+            assert a_ts in train_ts, f"analog {a_ts} is not a training timestamp"
+            assert a_ts <= TRAIN_END, f"analog {a_ts} is after the training split"
+            assert member == train_obs[a_ts], "member != training obs at analog time"
+            min_gap_h = min(min_gap_h, abs((a_ts - ts).total_seconds()) / 3600.0)
+            n_checked += 1
+assert min_gap_h > EXCLUSION_HOURS
+print(f"  PASS: closest selected analog is {min_gap_h:.0f} h from its target (> 168 h)")
+print(f"  PASS: all {n_checked} analogs are training timestamps with matching "
+      "training observations (no test data in analog selection)")
+
+print("AUDIT 4 — identical preprocessing and feature scaling")
+assert np.allclose(trad.scaler.mean_, feat_scaler.mean_)
+assert np.allclose(trad.scaler.scale_, feat_scaler.scale_)
+assert np.allclose(trad.train_scaled,
+                   feat_scaler.transform(train_df[FEATURES]))
+assert np.allclose(ckpt["feat_scaler_mean"], feat_scaler.mean_)
+assert np.allclose(ckpt["feat_scaler_scale"], feat_scaler.scale_)
+print("  PASS: both scalers (and the saved Phase 2 checkpoint scaler) are identical")
+
+print("AUDIT 5 — Traditional AnEn CRPS matches its saved metric")
+print(f"  recomputed {scores['Traditional AnEn'][1]:.2f} vs saved "
+      f"{saved_trad['crps_traditional_anen_kmh']:.2f} km/h — asserted in the "
+      "evaluation cell above: PASS")
+
+print("AUDIT 6 — timestamps unique, ensemble arrays valid")
+assert len(set(EVENT_TIMESTAMPS)) == len(EVENT_TIMESTAMPS) == 130
+assert df["timestamp"].is_unique and test_df["timestamp"].is_unique
+assert not df.isna().any().any()
+for name, arr in [("raw_fcst", raw_fcst), ("obs", obs),
+                  ("trad_members", trad_members), ("deep_members", deep_members)]:
+    assert np.isfinite(arr).all(), f"{name} contains NaN/inf"
+assert trad_members.shape == deep_members.shape == (130, 15)
+assert ((trad_members >= 0) & (trad_members <= df[TARGET].max())).all()
+assert ((deep_members >= 0) & (deep_members <= df[TARGET].max())).all()
+print("  PASS: 130 unique event timestamps; all arrays finite, (130, 15), "
+      "members within the observed gust range")
+print("\\nAll six audit checks passed.")"""))
 
 # ---------------------------------------------------------------- 6. §3 md
 cells.append(nbf.v4.new_markdown_cell("""## 3. Visualizations
@@ -334,7 +431,7 @@ def band(members_list):
     return m.mean(axis=1), np.percentile(m, 5, axis=1), np.percentile(m, 95, axis=1)
 
 trad_w = [trad.find_analogs(ts, K=K)["ensemble_members"] for ts in window["timestamp"]]
-deep_w = [deep_find_analogs(ts, K=K) for ts in window["timestamp"]]
+deep_w = [deep_find_analogs(ts, K=K)["ensemble_members"] for ts in window["timestamp"]]
 trad_mean_w, trad_p5, trad_p95 = band(trad_w)
 deep_mean_w, deep_p5, deep_p95 = band(deep_w)
 

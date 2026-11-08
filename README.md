@@ -285,6 +285,18 @@ statistics).
 + SVG). Full notebook:
 [`notebooks/comparison_analysis.ipynb`](notebooks/comparison_analysis.ipynb).
 
+**Verification audit (§2b of the notebook).** The shared protocol makes
+fairness true by construction, but the notebook also checks it explicitly
+with asserts over all 130 events × 15 members × 2 methods (3,900 analog
+selections): (1) both methods draw from the identical 6,888-row training
+pool; (2) the closest selected analog of any event is 709 h from its
+target (> 168 h exclusion); (3) every analog is a training timestamp
+with its member equal to the training observation at that time — no test
+data in analog selection; (4) both scalers (and the saved Phase 2
+checkpoint scaler) are identical; (5) Traditional AnEn CRPS recomputed
+4.15 vs. saved 4.15 km/h; (6) 130 unique event timestamps, all arrays
+finite and (130, 15). All six checks pass.
+
 ## Roadmap
 
 - **Phase 2:** CRPS / rank-histogram verification, K and predictor
