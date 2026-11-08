@@ -3,7 +3,7 @@
 Direct Euclidean-distance analog search in the 4-D standardized forecast
 space (temperature, wind speed, wind gust, surface pressure), WITHOUT any
 neural-network embedding. This is the classical AnEn of Delle Monache et
-al. (2011, 2013) and the baseline against which the Phase 2 Deep-AnEn
+al. (2011, 2013) and the baseline against which the Phase 2 Deep-AnEn-Regression
 (16-D PyTorch latent embedding) is compared.
 
 The dataset, split, scaler, and evaluation subset are NOT defined here:
@@ -110,7 +110,7 @@ class TraditionalAnalogEnsemble:
         """Evaluate Raw NWP vs. Traditional AnEn on the shared storm events.
 
         The event list comes from data_prep.get_storm_events — the exact
-        same 130 timestamps used by the Deep-AnEn evaluation. Returns
+        same 130 timestamps used by the Deep-AnEn-Regression evaluation. Returns
         (results_df, metrics_dict).
         """
         storms = get_storm_events(self.test_df, threshold)

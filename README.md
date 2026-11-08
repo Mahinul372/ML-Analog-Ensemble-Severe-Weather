@@ -142,21 +142,27 @@ print(result["analogs"])          # the 10 closest historical timestamps
 │   └── atlanta_weather_archive.csv   # 8,760 hourly rows, Atlanta GA
 ├── notebooks/
 │   ├── deep_anen_severe_weather.ipynb  # Phase 2 Colab notebook (GPU)
-│   └── comparison_analysis.ipynb       # Phase 3 3-way benchmark
+│   └── comparison_analysis.ipynb       # Phase 4 4-way benchmark
 ├── models/
-│   ├── deep_anen_weights.pth         # encoder weights (generated on run)
-│   └── deep_anen_weights.json        # text-safe state dict
+│   ├── deep_anen_regression_weights.pth         # Phase 2 encoder weights
+│   ├── deep_anen_regression_weights.json        # text-safe state dict
+│   ├── deep_anen_triplet_weights.pth            # Phase 4 LSTM weights
+│   └── deep_anen_triplet_weights.json           # text-safe state dict
 ├── plots/
 │   ├── fig1_event_timeseries.png/.svg
 │   ├── fig2_metrics_bars.png/.svg
 │   ├── 3way_method_comparison_timeseries.png/.svg
-│   └── rmse_crps_benchmark_barchart.png/.svg
+│   ├── rmse_crps_benchmark_barchart.png/.svg
+│   ├── 4way_method_comparison_timeseries.png/.svg
+│   └── rmse_crps_benchmark_barchart_4way.png/.svg
 ├── metrics/
-│   ├── deep_anen_metrics.json
+│   ├── deep_anen_regression_metrics.json
 │   ├── traditional_anen_metrics.json
+│   ├── deep_anen_triplet_metrics.json
 │   └── comparison_metrics.json
 ├── data_prep.py                      # shared protocol: split/scaler/events
 ├── traditional_anen.py               # Traditional AnEn engine (K=15)
+├── phase4_triplet.py                 # Hu et al. (2023) Deep Analog (LSTM + RA triplets)
 ├── fetch_data.py                     # Open-Meteo data pipeline
 ├── analog_ensemble.py                # AnalogEnsembleEngine (K=10)
 ├── run_pipeline.py                   # end-to-end runner + verification
@@ -172,19 +178,19 @@ in Google Colab, select a GPU runtime (*Runtime → Change runtime type →
 T4 GPU*), then *Run all*. It trains the encoder (30 epochs), evaluates on
 130 test storm events, and regenerates the figures, weights, and metrics.
 
-## Phase 2 — Deep Analog Ensemble (Deep-AnEn)
+## Phase 2 — Deep Analog Ensemble (Deep-AnEn-Regression)
 
 **Executive summary.** Phase 1 searched for analogs in standardized *raw*
 feature space. Phase 2 learns the similarity metric: a PyTorch encoder maps
 the 4-D forecast vector into a 16-D latent space trained (30 epochs, MSE,
 Adam) to predict observed wind gusts, and analog search runs in that learned
 space. On 130 held-out test storm events (observed gust ≥ 35 km/h,
-2026-09-01 → 2026-11-01), Deep-AnEn cuts gust RMSE by **40.6%** and CRPS by
+2026-09-01 → 2026-11-01), Deep-AnEn-Regression cuts gust RMSE by **40.6%** and CRPS by
 **61.1%** versus raw NWP. Full runnable notebook:
 [`notebooks/deep_anen_severe_weather.ipynb`](notebooks/deep_anen_severe_weather.ipynb)
 (Google Colab, GPU runtime).
 
-**Model structure — `DeepAnalogEncoder`:**
+**Model structure — `DeepAnalogRegressionEncoder`:**
 
 ```
 forecast (4) ──▶ Linear(4 → 32) ──▶ ReLU ──▶ Dropout(0.2)
@@ -203,27 +209,27 @@ analogs are drawn from the training archive only.
 | Forecast | RMSE (km/h) | CRPS (km/h) |
 |---|---|---|
 | Raw NWP | 13.23 | 11.42 |
-| **Deep-AnEn (K=15)** | **7.86** | **4.45** |
+| **Deep-AnEn-Regression (K=15)** | **7.86** | **4.45** |
 | **Skill improvement** | **+40.6%** | **+61.1%** |
 
 ![Severe wind event, 2026-10-10](plots/fig1_event_timeseries.svg)
 *Figure 1 — Most severe test event (peak observed gust 71.6 km/h,
-2026-10-10 09:00 UTC, ±48 h): raw NWP vs. observed gusts vs. Deep-AnEn
+2026-10-10 09:00 UTC, ±48 h): raw NWP vs. observed gusts vs. Deep-AnEn-Regression
 mean with 90% envelope (p5–p95).*
 
 ![RMSE and CRPS comparison](plots/fig2_metrics_bars.svg)
-*Figure 2 — RMSE and CRPS: raw NWP vs. Deep-AnEn over the 130 test storm
+*Figure 2 — RMSE and CRPS: raw NWP vs. Deep-AnEn-Regression over the 130 test storm
 events.*
 
-**Honest limitation.** Deep-AnEn improves the *average* storm markedly, but
+**Honest limitation.** Deep-AnEn-Regression improves the *average* storm markedly, but
 the ensemble mean still under-predicts the single most extreme peak (52 vs.
 71.6 km/h observed in Figure 1); the 90% envelope reaches ~65 km/h. Extreme
 tails remain the hard case — Phase 3 work (longer archive, K tuning,
 additional predictors).
 
-**Artifacts:** weights in `models/deep_anen_weights.pth` (generated on run)
-with a text-safe JSON state dict at `models/deep_anen_weights.json`;
-metrics in `metrics/deep_anen_metrics.json`; figures in `plots/` (PNG 300 dpi
+**Artifacts:** weights in `models/deep_anen_regression_weights.pth` (generated on run)
+with a text-safe JSON state dict at `models/deep_anen_regression_weights.json`;
+metrics in `metrics/deep_anen_regression_metrics.json`; figures in `plots/` (PNG 300 dpi
 + SVG). The notebook regenerates all of them end-to-end.
 
 ## Phase 3 — Traditional AnEn Benchmark & 3-Way Comparison
@@ -231,7 +237,7 @@ metrics in `metrics/deep_anen_metrics.json`; figures in `plots/` (PNG 300 dpi
 **Executive summary.** Phase 2 beat raw NWP by a wide margin — but is the
 *learned* latent space actually better than the *classical* Analog Ensemble?
 On the exact same 130 untouched test storm events, **Traditional AnEn
-narrowly beats Deep-AnEn on both scores**. Both analog methods crush raw
+narrowly beats Deep-AnEn-Regression on both scores**. Both analog methods crush raw
 NWP; the learned space adds no advantage on one year of data with four
 predictors. That is the finding, and the benchmark exists to make it
 checkable: one shared protocol, one timestamp list, recomputed scores.
@@ -243,7 +249,7 @@ experiment — never recreated per method. The scaler is fit on the
 training split only. The evaluation subset is the 130 test-window
 timestamps with observed gust ≥ 35 km/h, built once and shared by all
 three methods (the comparison notebook asserts all three evaluated
-identical timestamps). Deep-AnEn scores are recomputed from the saved
+identical timestamps). Deep-AnEn-Regression scores are recomputed from the saved
 weights and checked against the Phase 2 metric file.
 
 **Complete 3-way model evaluation table — 130 test storm events:**
@@ -252,17 +258,17 @@ weights and checked against the Phase 2 metric file.
 |---|---|---|
 | Raw NWP | 13.23 | 11.42 |
 | Traditional AnEn | 7.43 | 4.15 |
-| Deep-AnEn | 7.86 | 4.45 |
+| Deep-AnEn-Regression | 7.86 | 4.45 |
 
 Skill vs. raw NWP: Traditional AnEn +43.9% RMSE / +63.7% CRPS;
-Deep-AnEn +40.6% RMSE / +61.1% CRPS.
+Deep-AnEn-Regression +40.6% RMSE / +61.1% CRPS.
 
 ![3-way severe-episode comparison](plots/3way_method_comparison_timeseries.svg)
 *Figure 1 — Severe episode selected by a predefined rule: the contiguous
 run of test-window hours with observed gust ≥ 35 km/h that has the
 highest observed peak (2026-10-10 01:00–13:00 UTC, 13 h, peak 71.6 km/h),
 plotted with ±24 h padding. Ground truth vs. raw NWP vs. Traditional
-AnEn mean with 90% prediction interval (p5–p95) vs. Deep-AnEn mean with
+AnEn mean with 90% prediction interval (p5–p95) vs. Deep-AnEn-Regression mean with
 90% prediction interval.*
 
 ![RMSE and CRPS benchmark](plots/rmse_crps_benchmark_barchart.svg)
@@ -297,11 +303,126 @@ checkpoint scaler) are identical; (5) Traditional AnEn CRPS recomputed
 4.15 vs. saved 4.15 km/h; (6) 130 unique event timestamps, all arrays
 finite and (130, 15). All six checks pass.
 
+## Four-Way Model Comparison and Discussion
+
+**Phase 4 — Hu et al. (2023) Deep Analog.** The paper-based implementation
+(`phase4_triplet.py`) follows the official methodology at
+https://github.com/uga-gaim/DeepAnalog: a 3-layer LSTM (20 hidden units,
+dropout 0.01) with a linear layer to 20-dimensional embeddings, trained
+with `TripletMarginLoss` (margin **0.9**, the official default — not 1.0)
+and Reverse Analog fitness-proportionate sampling, Adam lr 0.005,
+early-stopping patience 15. Input is a 24 h lookback window of hourly
+forecasts (adaptation: the paper's sequence is a window over forecast
+lead times; our archive has one forecast per hour). No regression head,
+no L2 normalization — both verified in the official code. Training ran
+the full 100 epochs on CPU (best epoch 95, best validation triplet loss
+0.6168, no early stop), seed 42, triplets from training records only.
+
+### Final four-way evaluation (identical 130 test storm events)
+
+| Method | RMSE (km/h) | CRPS (km/h) | RMSE skill | CRPS skill |
+|---|---:|---:|---:|---:|
+| Raw NWP | 13.23 | 11.42 | — | — |
+| Traditional AnEn | 7.43 | 4.15 | +43.9% | +63.7% |
+| Deep-AnEn-Regression | 7.86 | 4.45 | +40.6% | +61.1% |
+| Hu-style Deep Analog | 8.35 | 5.15 | +36.9% | +54.9% |
+
+![4-way severe-episode time series](plots/4way_method_comparison_timeseries.svg)
+![4-way RMSE/CRPS benchmark](plots/rmse_crps_benchmark_barchart_4way.svg)
+
+**Verification audit (§2b of the updated comparison notebook).** All six
+checks pass over all 130 events × 15 members × 3 analog methods (5,850
+analog selections): identical 6,888-row training pool; closest selected
+analog 626 h from its target (> 168 h exclusion); all analogs are
+training timestamps with members equal to the training observation;
+identical scalers (both saved checkpoints included); all three analog
+methods' CRPS values reproduce their saved metrics (Traditional 4.15,
+Deep-AnEn-Regression 4.45, Hu-style 5.15); 130 unique timestamps, all
+arrays finite and (130, 15).
+
+### Why Raw NWP performed differently from the analog methods
+
+**Finding.** The deterministic forecast systematically under-predicts
+severe gusts: on the 2026-10-10 episode it forecast ~53 km/h against an
+observed peak of 71.6 km/h, and the same bias appears across the 130
+events (RMSE 13.23, CRPS 11.42). Replacing the single forecast value
+with the distribution of 15 historical observed gusts corrects most of
+that bias and adds a calibrated spread — every analog method cuts RMSE
+by ~37–44% and CRPS by ~55–64%. The gap is a property of the task
+(extreme-value under-prediction), not of any one analog method.
+
+### Why Traditional AnEn may outperform Deep-AnEn-Regression
+
+**Finding.** Direct Euclidean distance on the four standardized forecast
+variables is a strong, noise-free similarity measure: with one year of
+archive and four predictors, the classical baseline leaves the learned
+16-D latent space little extra signal to exploit. **Hypothesis.** The
+regression objective optimizes gust prediction, not analog ranking, so
+the learned space is not directly trained for the retrieval task. The
+gaps (0.43 km/h RMSE, 0.30 km/h CRPS on 130 events) are small — treat
+this as a near-tie, not a demonstrated statistical superiority.
+
+### Did the Hu-style LSTM triplet model improve on either analog method?
+
+**Finding: no.** The Hu-style Deep Analog is the worst of the three
+analog methods on both scores (RMSE 8.35, CRPS 5.15), behind Traditional
+AnEn (7.43/4.15) and Deep-AnEn-Regression (7.86/4.45), while still
+clearly beating Raw NWP (+36.9% RMSE, +54.9% CRPS). The paper's method
+did not transfer to an advantage on this dataset as configured. The
+ranking on this test set is unambiguous, but no significance test was
+run, so this is a reported ranking — not a claim of proven superiority
+for any method.
+
+### Possible explanations — findings vs. hypotheses
+
+- **Finding:** direct four-variable Euclidean similarity is highly
+  effective here, and neither learned embedding beat it.
+- **Hypothesis (objective mismatch):** the triplet loss is a proxy.
+  Validation triplet loss improved steadily (0.83 → 0.62 over 100
+  epochs) while downstream retrieval RMSE/CRPS did not follow — the
+  ranking objective and the storm-event retrieval metric diverged.
+- **Hypothesis (geometry distortion):** fitness-proportionate sampling
+  deliberately favors hard negatives (observationally close
+  non-positives) and margin 0.9 enforces separation; on a small archive
+  this can warp the embedding space so retrieved analogs are less
+  representative of the target's weather regime.
+- **Hypothesis (temporal structure):** the 24 h LSTM sequences carry a
+  strong diurnal signal; the network may lean on time-of-day patterns
+  rather than weather-regime similarity.
+- **Hypothesis (data limits):** 6,865 usable training sequences and four
+  predictors restrict what any learned metric can add; the paper's
+  setting used a longer record (2017–2019) and more predictors.
+- **Informal control (finding, not a benchmark method):** an
+  *untrained*, randomly initialized LSTM of the same architecture scored
+  RMSE 7.29 / 7.58 / 7.93 and CRPS 4.35 / 4.60 / 4.68 across three seeds
+  (mean 7.60 / 4.54) — beating the trained triplet model on both scores
+  in all three seeds, and beating Deep-AnEn-Regression on mean RMSE. A
+  random smooth projection of the 24 h sequence preserves enough
+  similarity structure for good analog retrieval; triplet training, as
+  configured, moved the space away from that useful structure rather
+  than toward a better one. This suggests the triplet *configuration* —
+  not the LSTM idea itself — is what underperformed, and it is a
+  candidate for follow-up (margin, negatives per positive, sequence
+  length), validated on validation data only and never tuned on the test
+  set.
+
+**Artifacts:** `phase4_triplet.py`, `models/deep_anen_triplet_weights.pth`
++ `.json` (text-safe state dict), `metrics/deep_anen_triplet_metrics.json`,
+`plots/4way_method_comparison_timeseries.png/.svg`,
+`plots/rmse_crps_benchmark_barchart_4way.png/.svg`, updated
+`notebooks/comparison_analysis.ipynb` and `metrics/comparison_metrics.json`.
+
 ## Roadmap
 
 - **Phase 2:** CRPS / rank-histogram verification, K and predictor
   sensitivity, multi-year archive, additional locations.
 - **Phase 3:** Operational mode — daily AnEn runs on live forecasts.
+- **Phase 4 (complete):** Hu et al. (2023) Deep Analog benchmarked —
+  it did not beat the classical baseline here. Follow-ups: longer
+  multi-year archive, richer predictors (humidity, CAPE, pressure
+  tendency), triplet hyperparameter variants validated on validation
+  data only, rank histograms, and paired significance testing before
+  claiming any ranking is statistically meaningful.
 
 ## References
 
@@ -309,6 +430,10 @@ finite and (130, 15). All six checks pass.
   with an Analog Ensemble.* Monthly Weather Review, 139(11).
 - Delle Monache, L., et al. (2013). *An Analog Ensemble for
   NWP Post-Processing.* Monthly Weather Review, 141(11).
+- Hu, W., Cervone, G., Young, G., et al. (2023). *Machine Learning
+  Weather Analogs for Near-Surface Variables.* Boundary-Layer
+  Meteorology, 186, 711–735. https://doi.org/10.1007/s10546-022-00779-6
+  — official implementation: https://github.com/uga-gaim/DeepAnalog
 - Open-Meteo: https://open-meteo.com/ (Previous-Runs & Archive APIs)
 
 ## License

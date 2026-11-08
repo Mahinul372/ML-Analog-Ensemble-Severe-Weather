@@ -3,7 +3,7 @@
 This module is the SINGLE canonical definition of the dataset, the
 chronological train/validation/test split, the feature scaler, the test
 storm-event subset, and the severe-episode selection rule. Every experiment
-(Traditional AnEn, Deep-AnEn, and the 3-way comparison) imports from here
+(Traditional AnEn, Deep-AnEn-Regression, and the 3-way comparison) imports from here
 so that preprocessing and splits are never recreated independently.
 
 Rules enforced here:
@@ -26,7 +26,7 @@ from sklearn.preprocessing import StandardScaler
 FEATURES = ["fcst_temp", "fcst_wind", "fcst_gust", "fcst_press"]
 TARGET = "obs_gust"
 
-# Chronological splits (UTC). Identical to the Phase 2 Deep-AnEn experiment.
+# Chronological splits (UTC). Identical to the Phase 2 Deep-AnEn-Regression experiment.
 TRAIN_END = pd.Timestamp("2026-08-15 23:00", tz="UTC")
 VAL_END = pd.Timestamp("2026-08-31 23:00", tz="UTC")
 

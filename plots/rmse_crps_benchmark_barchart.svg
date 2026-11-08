@@ -421,7 +421,7 @@ L 340.184941 47.952656
      </g>
      <g id="line2d_6"/>
      <g id="text_3">
-      <!-- Deep-AnEn -->
+      <!-- Deep-AnEn-Regression -->
       <g style="fill: #262626" transform="translate(314.336504 311.04) scale(0.1 -0.1)">
        <defs>
         <path id="LiberationSans-27" d="M 4316 2247 
@@ -1690,7 +1690,7 @@ L 730.784941 47.952656
      </g>
      <g id="line2d_30"/>
      <g id="text_20">
-      <!-- Deep-AnEn -->
+      <!-- Deep-AnEn-Regression -->
       <g style="fill: #262626" transform="translate(704.936504 311.04) scale(0.1 -0.1)">
        <use xlink:href="#LiberationSans-27"/>
        <use xlink:href="#LiberationSans-48" transform="translate(72.21875 0)"/>

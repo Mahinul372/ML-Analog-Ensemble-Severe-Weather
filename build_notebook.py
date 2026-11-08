@@ -18,7 +18,7 @@ nb.metadata = {
 cells = []
 
 # ---------------------------------------------------------------- 0. Title
-cells.append(nbf.v4.new_markdown_cell("""# Deep Analog Ensemble (Deep-AnEn) for Severe Wind Gusts
+cells.append(nbf.v4.new_markdown_cell("""# Deep Analog Ensemble (Deep-AnEn-Regression) for Severe Wind Gusts
 
 **Phase 2 — PyTorch Deep Analog Latent Encoder + CRPS/RMSE evaluation**
 Repository: [Mahinul372/ML-Analog-Ensemble-Severe-Weather](https://github.com/Mahinul372/ML-Analog-Ensemble-Severe-Weather)
@@ -38,7 +38,7 @@ training, analog search, CRPS/RMSE evaluation, and publication-ready figures.
 | Step | What happens |
 |---|---|
 | §1 | Load 8,760 hourly rows (Atlanta, GA); standardize forecast features |
-| §2 | Train `DeepAnalogEncoder` (4→32→16) on GPU, MSE vs. observed gusts |
+| §2 | Train `DeepAnalogRegressionEncoder` (4→32→16) on GPU, MSE vs. observed gusts |
 | §3 | K=15 latent-space analog search; RMSE + CRPS vs. raw NWP |
 | §4 | Event time-series with 90% envelope; RMSE/CRPS bar chart |
 | §5 | Save weights (`models/`), figures (`plots/`), metrics JSON |
@@ -146,9 +146,9 @@ X_test, y_test = to_tensors(test_df)
 print(f"Tensors: X_train {tuple(X_train.shape)} | X_val {tuple(X_val.shape)} | X_test {tuple(X_test.shape)}")"""))
 
 # ---------------------------------------------------------------- 4. §2 md
-cells.append(nbf.v4.new_markdown_cell("""## 2. PyTorch Deep Analog Latent Encoder (Deep-AnEn)
+cells.append(nbf.v4.new_markdown_cell("""## 2. PyTorch Deep Analog Latent Encoder (Deep-AnEn-Regression)
 
-**Architecture — `DeepAnalogEncoder`:**
+**Architecture — `DeepAnalogRegressionEncoder`:**
 
 ```
 forecast (4) ──▶ Linear(4 → 32) ──▶ ReLU ──▶ Dropout(0.2)
@@ -172,7 +172,7 @@ embeddings by Euclidean distance, and return the *observed* gusts at those
 
 # ---------------------------------------------------------------- 5. §2 code (model + train)
 cells.append(nbf.v4.new_code_cell("""# --- Model -------------------------------------------------------------------
-class DeepAnalogEncoder(nn.Module):
+class DeepAnalogRegressionEncoder(nn.Module):
     \"\"\"Forecast (4) -> 32 -> ReLU -> Dropout -> 16-D latent embedding.\"\"\"
 
     def __init__(self, input_dim=4, hidden_dim=32, latent_dim=16, dropout=0.2):
@@ -192,7 +192,7 @@ class DeepAnalogEncoder(nn.Module):
         return self.head(self.encode(x))
 
 
-encoder = DeepAnalogEncoder().to(DEVICE)
+encoder = DeepAnalogRegressionEncoder().to(DEVICE)
 print(encoder)
 print(f"Trainable parameters: {sum(p.numel() for p in encoder.parameters() if p.requires_grad):,}")
 
@@ -275,7 +275,7 @@ peak_test = test_df.loc[test_df[TARGET].idxmax(), "timestamp"]
 demo = find_analogs(peak_test, K=15)
 print(f"Target {demo['target_timestamp']} | forecast gust {demo['target_forecast_gust']:.1f} | "
       f"observed gust {demo['target_observed_gust']:.1f} km/h")
-print(f"Deep-AnEn mean {demo['ensemble_mean']:.1f} | p10 {demo['p10']:.1f} | "
+print(f"Deep-AnEn-Regression mean {demo['ensemble_mean']:.1f} | p10 {demo['p10']:.1f} | "
       f"p90 {demo['p90']:.1f} km/h")
 print("Closest analogs:", [a["timestamp"][:16] for a in demo["analogs"][:5]])"""))
 
@@ -288,8 +288,8 @@ with observed gust ≥ 35 km/h — **130 events**. For each event we compare:
 | Forecast | Type | Metric |
 |---|---|---|
 | Raw NWP `fcst_gust` | Deterministic | RMSE, CRPS (single-member) |
-| Deep-AnEn ensemble mean | Deterministic | RMSE |
-| Deep-AnEn 15-member ensemble | Probabilistic | CRPS |
+| Deep-AnEn-Regression ensemble mean | Deterministic | RMSE |
+| Deep-AnEn-Regression 15-member ensemble | Probabilistic | CRPS |
 
 - **RMSE** = √(mean((prediction − observation)²)) — penalizes large misses,
   the standard deterministic score.
@@ -298,7 +298,7 @@ with observed gust ≥ 35 km/h — **130 events**. For each event we compare:
   rewards ensembles that are both sharp *and* calibrated. For a single-member
   (deterministic) forecast, CRPS reduces to absolute error.
 - **Skill improvement** = (Score_raw − Score_AnEn) / Score_raw × 100%.
-  Positive means Deep-AnEn beats raw NWP.
+  Positive means Deep-AnEn-Regression beats raw NWP.
 
 Analog search for test events uses **only the training archive**, so the
 evaluation is honest: no test-period information enters any prediction."""))
@@ -333,7 +333,7 @@ skill_crps = 100 * (crps_raw - crps_anen) / crps_raw
 
 results = pd.DataFrame(
     {
-        "Forecast": ["Raw NWP", "Deep-AnEn (K=15)"],
+        "Forecast": ["Raw NWP", "Deep-AnEn-Regression (K=15)"],
         "RMSE (km/h)": [rmse_raw, rmse_anen],
         "CRPS (km/h)": [crps_raw, crps_anen],
     }
@@ -343,18 +343,18 @@ print(f"\\nRMSE skill improvement: {skill_rmse:+.1f}%")
 print(f"CRPS skill improvement: {skill_crps:+.1f}%")
 print(f"Mean observed gust over storm events: {obs.mean():.1f} km/h "
       f"(raw NWP bias: {np.mean(raw_fcst - obs):+.1f} km/h, "
-      f"Deep-AnEn bias: {np.mean(anen_mean - obs):+.1f} km/h)")"""))
+      f"Deep-AnEn-Regression bias: {np.mean(anen_mean - obs):+.1f} km/h)")"""))
 
 # ---------------------------------------------------------------- 9. §4 md
 cells.append(nbf.v4.new_markdown_cell("""## 4. High-Resolution Visualizations
 
 - **Figure 1** — the most severe test-window event (peak observed gust
   71.6 km/h on 2026-10-10 09:00 UTC), ±48 h: raw NWP forecast vs. observed
-  gusts vs. the Deep-AnEn 15-member ensemble mean with its 90% confidence
+  gusts vs. the Deep-AnEn-Regression 15-member ensemble mean with its 90% confidence
   envelope (5th–95th percentile). A good probabilistic forecast tracks the
   observed peak and widens its envelope exactly when the event is most extreme.
-- **Figure 2** — head-to-head bars: RMSE (raw NWP vs. Deep-AnEn) and CRPS
-  (raw NWP vs. Deep-AnEn), with the skill improvements annotated."""))
+- **Figure 2** — head-to-head bars: RMSE (raw NWP vs. Deep-AnEn-Regression) and CRPS
+  (raw NWP vs. Deep-AnEn-Regression), with the skill improvements annotated."""))
 
 # ---------------------------------------------------------------- 10. Fig 1
 cells.append(nbf.v4.new_code_cell("""# --- Figure 1: severe-event time series + 90% envelope -------------------------
@@ -372,8 +372,8 @@ for ts in window["timestamp"]:
 plt.style.use("seaborn-v0_8-whitegrid")
 fig, ax = plt.subplots(figsize=(13, 5.5))
 ax.fill_between(window["timestamp"], p5, p95, color="#2c7fb8", alpha=0.25,
-                label="Deep-AnEn 90% envelope (p5–p95)")
-ax.plot(window["timestamp"], ens_mean, color="#2c7fb8", lw=2, label="Deep-AnEn mean (K=15)")
+                label="Deep-AnEn-Regression 90% envelope (p5–p95)")
+ax.plot(window["timestamp"], ens_mean, color="#2c7fb8", lw=2, label="Deep-AnEn-Regression mean (K=15)")
 ax.plot(window["timestamp"], window["obs_gust"], color="#d7301f", lw=2, label="Observed gust")
 ax.plot(window["timestamp"], window["fcst_gust"], color="#636363", lw=1.5,
         ls="--", label="Raw NWP forecast")
@@ -392,22 +392,22 @@ plt.show()"""))
 # ---------------------------------------------------------------- 11. Fig 2
 cells.append(nbf.v4.new_code_cell("""# --- Figure 2: RMSE & CRPS comparison ------------------------------------------
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-labels = ["Raw NWP", "Deep-AnEn"]
+labels = ["Raw NWP", "Deep-AnEn-Regression"]
 colors = ["#636363", "#2c7fb8"]
 
 axes[0].bar(labels, [rmse_raw, rmse_anen], color=colors, width=0.55)
-axes[0].set_title(f"RMSE (km/h)\\nDeep-AnEn skill: {skill_rmse:+.1f}%", fontweight="bold")
+axes[0].set_title(f"RMSE (km/h)\\nDeep-AnEn-Regression skill: {skill_rmse:+.1f}%", fontweight="bold")
 axes[0].set_ylabel("RMSE (km/h)")
 for i, v in enumerate([rmse_raw, rmse_anen]):
     axes[0].text(i, v + 0.3, f"{v:.2f}", ha="center", fontweight="bold")
 
 axes[1].bar(labels, [crps_raw, crps_anen], color=colors, width=0.55)
-axes[1].set_title(f"CRPS (km/h)\\nDeep-AnEn skill: {skill_crps:+.1f}%", fontweight="bold")
+axes[1].set_title(f"CRPS (km/h)\\nDeep-AnEn-Regression skill: {skill_crps:+.1f}%", fontweight="bold")
 axes[1].set_ylabel("CRPS (km/h)")
 for i, v in enumerate([crps_raw, crps_anen]):
     axes[1].text(i, v + 0.15, f"{v:.2f}", ha="center", fontweight="bold")
 
-fig.suptitle("Deep-AnEn vs. raw NWP — 130 test storm events (obs gust ≥ 35 km/h)",
+fig.suptitle("Deep-AnEn-Regression vs. raw NWP — 130 test storm events (obs gust ≥ 35 km/h)",
              fontsize=12, fontweight="bold")
 fig.tight_layout()
 fig.savefig("plots/fig2_metrics_bars.png", dpi=300)
@@ -419,11 +419,11 @@ cells.append(nbf.v4.new_markdown_cell("""## 5. Save Outputs & Export
 
 Saved in this run:
 
-- `models/deep_anen_weights.pth` — encoder + head weights, scalers, and
+- `models/deep_anen_regression_weights.pth` — encoder + head weights, scalers, and
   training config (enough to reproduce the latent space exactly).
 - `plots/fig1_event_timeseries.png` — severe-event time series (300 dpi).
 - `plots/fig2_metrics_bars.png` — RMSE/CRPS comparison (300 dpi).
-- `metrics/deep_anen_metrics.json` — the headline numbers for the README.
+- `metrics/deep_anen_regression_metrics.json` — the headline numbers for the README.
 
 **To sync back to GitHub from Colab**, commit from the cloned repo directory
 (`git add` / `git commit` / `git push`) with your credentials, or download the
@@ -442,20 +442,20 @@ torch.save({
     "target_scaler_mean": target_scaler.mean_.tolist(),
     "target_scaler_scale": target_scaler.scale_.tolist(),
     "history": history,
-}, "models/deep_anen_weights.pth")
+}, "models/deep_anen_regression_weights.pth")
 
 metrics = {
     "n_test_storm_events": int(len(storms)),
     "rmse_raw_nwp_kmh": round(rmse_raw, 2),
-    "rmse_deep_anen_kmh": round(rmse_anen, 2),
+    "rmse_deep_anen_regression_kmh": round(rmse_anen, 2),
     "rmse_skill_pct": round(skill_rmse, 1),
     "crps_raw_nwp_kmh": round(crps_raw, 2),
-    "crps_deep_anen_kmh": round(crps_anen, 2),
+    "crps_deep_anen_regression_kmh": round(crps_anen, 2),
     "crps_skill_pct": round(skill_crps, 1),
     "peak_test_event": str(event_time),
     "peak_test_gust_kmh": round(float(window["obs_gust"].max()), 1),
 }
-with open("metrics/deep_anen_metrics.json", "w") as f:
+with open("metrics/deep_anen_regression_metrics.json", "w") as f:
     json.dump(metrics, f, indent=2)
 
 # Text-safe copy of the weights (the .pth binary cannot be pushed through
@@ -463,16 +463,16 @@ with open("metrics/deep_anen_metrics.json", "w") as f:
 weights_json = {
     k: v.cpu().tolist() for k, v in encoder.state_dict().items()
 }
-with open("models/deep_anen_weights.json", "w") as f:
+with open("models/deep_anen_regression_weights.json", "w") as f:
     json.dump({"config": {"input_dim": 4, "hidden_dim": 32, "latent_dim": 16,
                           "dropout": 0.2, "epochs": 30, "lr": 1e-3, "K": 15},
                "state_dict": weights_json}, f)
 print(json.dumps(metrics, indent=2))
 print("\\nSaved files:")
-for p in ["models/deep_anen_weights.pth", "models/deep_anen_weights.json",
+for p in ["models/deep_anen_regression_weights.pth", "models/deep_anen_regression_weights.json",
           "plots/fig1_event_timeseries.png", "plots/fig1_event_timeseries.svg",
           "plots/fig2_metrics_bars.png", "plots/fig2_metrics_bars.svg",
-          "metrics/deep_anen_metrics.json"]:
+          "metrics/deep_anen_regression_metrics.json"]:
     print(f"  {p} ({os.path.getsize(p)/1024:.1f} KB)")"""))
 
 nb.cells = cells

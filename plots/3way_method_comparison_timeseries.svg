@@ -2830,7 +2830,7 @@ z
 " style="fill: #2c7fb8; fill-opacity: 0.2; stroke: #2c7fb8; stroke-opacity: 0.2; stroke-linejoin: miter"/>
     </g>
     <g id="text_24">
-     <!-- Deep-AnEn 90% prediction interval (p5–p95) -->
+     <!-- Deep-AnEn-Regression 90% prediction interval (p5–p95) -->
      <g style="fill: #262626" transform="translate(72.560273 69.130342) scale(0.09 -0.09)">
       <defs>
        <path id="LiberationSans-27" d="M 4316 2247 
@@ -2975,7 +2975,7 @@ L 65.360273 91.87292
 " style="fill: none; stroke: #2c7fb8; stroke-width: 2; stroke-linecap: round"/>
     </g>
     <g id="text_26">
-     <!-- Deep-AnEn mean (K=15) -->
+     <!-- Deep-AnEn-Regression mean (K=15) -->
      <g style="fill: #262626" transform="translate(72.560273 95.02292) scale(0.09 -0.09)">
       <use xlink:href="#LiberationSans-27"/>
       <use xlink:href="#LiberationSans-48" transform="translate(72.21875 0)"/>
