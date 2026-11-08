@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.openmeteo_cache/
+*.sqlite
+.DS_Store
