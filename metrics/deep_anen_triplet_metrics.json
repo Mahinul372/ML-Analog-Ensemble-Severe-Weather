@@ -1,5 +1,5 @@
 {
-  "model": "Hu-style Deep Analog (Phase 4) \u2014 LSTM triplet embedding",
+  "model": "Deep Analog (Hu et al., 2023) \u2014 LSTM triplet embedding",
   "paper": "Hu et al. (2023), Machine Learning Weather Analogs for Near-Surface Variables, Boundary-Layer Meteorology 186, 711-735, DOI: 10.1007/s10546-022-00779-6",
   "paper_repo": "https://github.com/uga-gaim/DeepAnalog",
   "method_note": "LSTM (3 layers, 20 hidden, dropout 0.01) + linear layer to 20-D embeddings; TripletMarginLoss margin 0.9 (official default); Reverse Analog fitness-proportionate sampling; 24 h lookback sequences (adaptation: paper uses lead-time windows). No L2 normalization (verified in official code). No regression head.",

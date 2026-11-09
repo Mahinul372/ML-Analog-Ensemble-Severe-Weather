@@ -517,7 +517,7 @@ def main():
 
     metrics, _ = evaluate_phase4(model, store, train_pos, test_df, device)
     metrics_full = {
-        "model": "Hu-style Deep Analog (Phase 4) — LSTM triplet embedding",
+        "model": "Deep Analog (Hu et al., 2023) — LSTM triplet embedding",
         "paper": PAPER,
         "paper_repo": PAPER_REPO,
         "method_note": "LSTM (3 layers, 20 hidden, dropout 0.01) + linear layer to 20-D embeddings; TripletMarginLoss margin 0.9 (official default); Reverse Analog fitness-proportionate sampling; 24 h lookback sequences (adaptation: paper uses lead-time windows). No L2 normalization (verified in official code). No regression head.",
@@ -553,7 +553,7 @@ def main():
         json.dump(metrics_full, f, indent=2)
 
     table = pd.DataFrame({
-        "Method": ["Raw NWP", "Hu-style Deep Analog (Phase 4)"],
+        "Method": ["Raw NWP", "Deep Analog (Hu et al., 2023)"],
         "RMSE (km/h)": [metrics["rmse_raw_nwp_kmh"], metrics["rmse_triplet_kmh"]],
         "CRPS (km/h)": [metrics["crps_raw_nwp_kmh"], metrics["crps_triplet_kmh"]],
     })

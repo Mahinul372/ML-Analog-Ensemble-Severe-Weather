@@ -13,7 +13,7 @@
       "rmse_kmh": 7.86,
       "crps_kmh": 4.45
     },
-    "Hu-style Deep Analog": {
+    "Deep Analog (Hu et al., 2023)": {
       "rmse_kmh": 8.35,
       "crps_kmh": 5.15
     }
@@ -21,11 +21,11 @@
   "rmse_skill_vs_raw_pct": {
     "Traditional AnEn": 43.9,
     "Deep-AnEn-Regression": 40.6,
-    "Hu-style Deep Analog": 36.9
+    "Deep Analog (Hu et al., 2023)": 36.9
   },
   "crps_skill_vs_raw_pct": {
     "Traditional AnEn": 63.7,
     "Deep-AnEn-Regression": 61.1,
-    "Hu-style Deep Analog": 54.9
+    "Deep Analog (Hu et al., 2023)": 54.9
   }
 }

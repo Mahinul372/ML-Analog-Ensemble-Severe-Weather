@@ -17,7 +17,7 @@ Refinements applied (per review, Phases 2-4):
   * The plotted episode is selected by a predefined contiguous-run rule.
   * Raw NWP CRPS is the mean absolute error (single-member CRPS).
   * Phase 2 is named Deep-AnEn-Regression everywhere (regression-trained
-    embedding) to distinguish it from the Phase 4 Hu-style Deep Analog
+    embedding) to distinguish it from the Phase 4 Deep Analog (Hu et al., 2023)
     (triplet-trained LSTM embedding).
   * Phase 4 numbers are recomputed here from the saved triplet checkpoint
     and checked against metrics/deep_anen_triplet_metrics.json.
@@ -35,7 +35,7 @@ nb.metadata = {
 cells = []
 
 # ---------------------------------------------------------------- 0. Title
-cells.append(nbf.v4.new_markdown_cell("""# 4-Way Model Comparison: Raw NWP vs. Traditional AnEn vs. Deep-AnEn-Regression vs. Hu-Style Deep Analog
+cells.append(nbf.v4.new_markdown_cell("""# 4-Way Model Comparison: Raw NWP vs. Traditional AnEn vs. Deep-AnEn-Regression vs. Deep Analog (Hu et al., 2023)
 
 **Phase 4 — Hu et al. (2023) Deep Analog benchmark + unified comparison**
 Repository: [Mahinul372/ML-Analog-Ensemble-Severe-Weather](https://github.com/Mahinul372/ML-Analog-Ensemble-Severe-Weather)
@@ -51,7 +51,7 @@ with the same strict apples-to-apples benchmark:
 | **Raw NWP** | — (deterministic `fcst_gust`) | — |
 | **Traditional AnEn** | 4-D standardized forecast space, Euclidean | 15 |
 | **Deep-AnEn-Regression** (Phase 2) | 16-D regression-trained latent embedding, Euclidean | 15 |
-| **Hu-style Deep Analog** (Phase 4) | 20-D LSTM triplet embedding, Euclidean | 15 |
+| **Deep Analog (Hu et al., 2023)** (Phase 4) | 20-D LSTM triplet embedding, Euclidean | 15 |
 
 **The scientific guarantee:** all four methods are evaluated on the
 **exact same 130 untouched test storm events** (observed gust ≥ 35 km/h,
@@ -60,7 +60,7 @@ with the same strict apples-to-apples benchmark:
 re-derived per method — and the notebook asserts all four methods
 evaluated identical timestamps. Splits, scaler, and episode selection
 likewise come from the single shared protocol in `data_prep.py`.
-Deep-AnEn-Regression and Hu-style Deep Analog numbers are **recomputed
+Deep-AnEn-Regression and Deep Analog (Hu et al., 2023) numbers are **recomputed
 here from their saved weights** (never retrained here, never copied from
 earlier phases) — and checked against the saved metric files for
 consistency.
@@ -250,10 +250,10 @@ def regression_find_analogs(target_timestamp, K=K):
         ],
     }
 
-# --- Hu-style Deep Analog: load the Phase 4 triplet checkpoint ---------------
+# --- Deep Analog (Hu et al., 2023): load the Phase 4 triplet checkpoint ---------------
 triplet_model, triplet_ckpt = load_triplet_model(
     "models/deep_anen_triplet_weights.pth", DEVICE)
-print(f"Loaded Hu-style Deep Analog weights (best epoch "
+print(f"Loaded Deep Analog (Hu et al., 2023) weights (best epoch "
       f"{triplet_ckpt['history']['best_epoch']}, "
       f"val loss {triplet_ckpt['history']['best_val_loss']:.4f})")
 triplet_store = SequenceStore(df, feat_scaler)
@@ -293,7 +293,7 @@ For each of the 130 shared storm-event timestamps we collect:
 3. **Deep-AnEn-Regression** — 15-member ensemble from Euclidean search in
    the learned 16-D latent space (Phase 2 weights reloaded above, never
    retrained here).
-4. **Hu-style Deep Analog** — 15-member ensemble from Euclidean search in
+4. **Deep Analog (Hu et al., 2023)** — 15-member ensemble from Euclidean search in
    the learned 20-D LSTM triplet embedding space (Phase 4 weights reloaded
    above, never retrained here).
 
@@ -342,7 +342,7 @@ scores = {
     "Raw NWP": (rmse(raw_fcst, obs), float(np.mean(np.abs(raw_fcst - obs)))),
     "Traditional AnEn": (rmse(trad_mean, obs), crps_ens(obs, trad_members)),
     "Deep-AnEn-Regression": (rmse(regression_mean, obs), crps_ens(obs, regression_members)),
-    "Hu-style Deep Analog": (rmse(triplet_mean, obs), crps_ens(obs, triplet_members)),
+    "Deep Analog (Hu et al., 2023)": (rmse(triplet_mean, obs), crps_ens(obs, triplet_members)),
 }
 
 summary = pd.DataFrame(
@@ -368,10 +368,10 @@ assert abs(scores["Traditional AnEn"][0] - saved_trad["rmse_traditional_anen_kmh
     "Traditional AnEn RMSE mismatch!"
 assert abs(scores["Traditional AnEn"][1] - saved_trad["crps_traditional_anen_kmh"]) < 0.05, \\
     "Traditional AnEn CRPS mismatch!"
-assert abs(scores["Hu-style Deep Analog"][0] - saved_triplet["rmse_kmh"]) < 0.05, \\
-    "Hu-style Deep Analog RMSE does not reproduce Phase 4!"
-assert abs(scores["Hu-style Deep Analog"][1] - saved_triplet["crps_kmh"]) < 0.05, \\
-    "Hu-style Deep Analog CRPS does not reproduce Phase 4!"
+assert abs(scores["Deep Analog (Hu et al., 2023)"][0] - saved_triplet["rmse_kmh"]) < 0.05, \\
+    "Deep Analog (Hu et al., 2023) RMSE does not reproduce Phase 4!"
+assert abs(scores["Deep Analog (Hu et al., 2023)"][1] - saved_triplet["crps_kmh"]) < 0.05, \\
+    "Deep Analog (Hu et al., 2023) CRPS does not reproduce Phase 4!"
 print("\\nConsistency check passed: recomputed scores match the saved "
       "Phase 2, Phase 3 and Phase 4 metric files.")
 
@@ -464,7 +464,7 @@ for name, key in [("Traditional AnEn", "crps_traditional_anen_kmh"),
                   ("Deep-AnEn-Regression", "crps_deep_anen_regression_kmh")]:
     saved = saved_trad if "Traditional" in name else saved_regression
     print(f"  {name}: recomputed {scores[name][1]:.2f} vs saved {saved[key]:.2f} km/h — PASS")
-print(f"  Hu-style Deep Analog: recomputed {scores['Hu-style Deep Analog'][1]:.2f} vs saved "
+print(f"  Deep Analog (Hu et al., 2023): recomputed {scores['Deep Analog (Hu et al., 2023)'][1]:.2f} vs saved "
       f"{saved_triplet['crps_kmh']:.2f} km/h — PASS")
 
 print("AUDIT 6 — timestamps unique, ensemble arrays valid")
@@ -526,13 +526,13 @@ ax.fill_between(window["timestamp"], trad_p5, trad_p95, color="#2ca02c", alpha=0
 ax.fill_between(window["timestamp"], regression_p5, regression_p95, color="#2c7fb8", alpha=0.18,
                 label="Deep-AnEn-Regression 90% prediction interval (p5–p95)")
 ax.fill_between(window["timestamp"], triplet_p5, triplet_p95, color="#9467bd", alpha=0.18,
-                label="Hu-style Deep Analog 90% prediction interval (p5–p95)")
+                label="Deep Analog (Hu et al., 2023) 90% prediction interval (p5–p95)")
 ax.plot(window["timestamp"], trad_mean_w, color="#2ca02c", lw=2,
         label="Traditional AnEn mean (K=15)")
 ax.plot(window["timestamp"], regression_mean_w, color="#2c7fb8", lw=2,
         label="Deep-AnEn-Regression mean (K=15)")
 ax.plot(window["timestamp"], triplet_mean_w, color="#9467bd", lw=2,
-        label="Hu-style Deep Analog mean (K=15)")
+        label="Deep Analog (Hu et al., 2023) mean (K=15)")
 ax.plot(window["timestamp"], window["obs_gust"], color="#d7301f", lw=2,
         label="Ground truth (observed gust)")
 ax.plot(window["timestamp"], window["fcst_gust"], color="#636363", lw=1.5,
@@ -552,7 +552,7 @@ plt.show()"""))
 
 # ---------------------------------------------------------------- 8. Fig 2
 cells.append(nbf.v4.new_code_cell("""# --- Figure 2: grouped RMSE / CRPS bar chart ----------------------------------
-methods = ["Raw NWP", "Traditional AnEn", "Deep-AnEn-Regression", "Hu-style Deep Analog"]
+methods = ["Raw NWP", "Traditional AnEn", "Deep-AnEn-Regression", "Deep Analog (Hu et al., 2023)"]
 colors = ["#636363", "#2ca02c", "#2c7fb8", "#9467bd"]
 rmse_vals = [scores[m][0] for m in methods]
 crps_vals = [scores[m][1] for m in methods]
@@ -584,24 +584,29 @@ plt.show()"""))
 cells.append(nbf.v4.new_markdown_cell("""## 4. What the Comparison Shows
 
 Read the ranking from the summary table above — it is computed, not
-asserted. The full interpretation, including why the methods differ and
-what is a demonstrated finding vs. a hypothesis, is in the README section
-*Four-Way Model Comparison and Discussion*. Three things to check in the
-table first:
+asserted. The full interpretation is in the README section *Four-Way
+Model Comparison and Discussion*. The headline pattern to check in the
+table is the dimensionality trend:
 
-1. **Do all analog methods beat raw NWP?** The deterministic forecast
-   systematically under-predicts severe gusts; a 15-member analog
-   ensemble should fix most of that bias on both RMSE and CRPS.
-2. **Does the Hu-style Deep Analog beat Traditional AnEn?** This is the
-   Phase 4 question: whether observation-guided triplet learning on 24 h
-   sequences adds anything over direct 4-D Euclidean similarity on the
-   same four predictors.
-3. **Does it beat Deep-AnEn-Regression?** The two learned embeddings
-   differ only in their training objective (regression vs. triplet) — a
-   direct comparison of the two ways to learn an analog space.
-
-Small differences (a few tenths of a km/h) on 130 events are **not**
-evidence of statistical superiority — treat near-ties as ties.
+1. **Skill falls as the similarity space grows: 4-D > 16-D > 20-D.**
+   Traditional AnEn (direct 4-D Euclidean) leads on both scores, the
+   16-D regression-trained embedding is next, and the 20-D Deep Analog
+   (DA) embedding follows — the same ordering on RMSE and CRPS. Every
+   analog method still beats Raw NWP by a wide margin, so the pattern is
+   about *which* similarity space works best on a one-year archive, not
+   about whether analog methods work.
+2. **Why it points to the archive, not the method.** Euclidean distances
+   become less discriminative as the similarity space grows (the curse
+   of dimensionality), and with only 6,888 training records the archive
+   is thin relative to a 16- or 20-dimensional space. Deep Analog was
+   developed on a three-year record with more predictors; this
+   experiment maps the regime where the direct metric still wins, and
+   predicts that a longer archive and richer predictors should narrow
+   or reverse the ordering.
+3. **No statistical claim is made here.** No significance test was run;
+   the gaps are reported as a ranking on these 130 events. Treat
+   near-ties as ties and the ordering as a finding to test further, not
+   a verdict on any method.
 
 **Saved in this run:** `plots/4way_method_comparison_timeseries.png/.svg`,
 `plots/rmse_crps_benchmark_barchart_4way.png/.svg`,

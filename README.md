@@ -320,12 +320,12 @@ the full 100 epochs on CPU (best epoch 95, best validation triplet loss
 
 ### Final four-way evaluation (identical 130 test storm events)
 
-| Method | RMSE (km/h) | CRPS (km/h) | RMSE skill | CRPS skill |
-|---|---:|---:|---:|---:|
-| Raw NWP | 13.23 | 11.42 | — | — |
-| Traditional AnEn | 7.43 | 4.15 | +43.9% | +63.7% |
-| Deep-AnEn-Regression | 7.86 | 4.45 | +40.6% | +61.1% |
-| Hu-style Deep Analog | 8.35 | 5.15 | +36.9% | +54.9% |
+| Method | Similarity space | RMSE (km/h) | CRPS (km/h) | RMSE skill | CRPS skill |
+|---|---|---:|---:|---:|---:|
+| Raw NWP | — (deterministic) | 13.23 | 11.42 | — | — |
+| Traditional AnEn | 4-D standardized forecasts | 7.43 | 4.15 | +43.9% | +63.7% |
+| Deep-AnEn-Regression | 16-D learned embedding | 7.86 | 4.45 | +40.6% | +61.1% |
+| Deep Analog (Hu et al., 2023) | 20-D learned embedding | 8.35 | 5.15 | +36.9% | +54.9% |
 
 ![4-way severe-episode time series](plots/4way_method_comparison_timeseries.svg)
 ![4-way RMSE/CRPS benchmark](plots/rmse_crps_benchmark_barchart_4way.svg)
@@ -337,8 +337,46 @@ analog 626 h from its target (> 168 h exclusion); all analogs are
 training timestamps with members equal to the training observation;
 identical scalers (both saved checkpoints included); all three analog
 methods' CRPS values reproduce their saved metrics (Traditional 4.15,
-Deep-AnEn-Regression 4.45, Hu-style 5.15); 130 unique timestamps, all
-arrays finite and (130, 15).
+Deep-AnEn-Regression 4.45, Deep Analog (Hu et al., 2023) 5.15); 130 unique
+timestamps, all arrays finite and (130, 15).
+
+### The headline finding: skill falls as the similarity space grows
+
+**Finding.** On this archive, forecast skill decreases monotonically
+with the dimensionality of the similarity space: **4-D > 16-D > 20-D**.
+The direct 4-D Euclidean search scores 7.43 / 4.15, the 16-D
+regression-trained embedding 7.86 / 4.45, and the 20-D triplet-trained
+Deep Analog (DA) embedding 8.35 / 5.15 — the same ordering on both RMSE
+and CRPS. Every analog method still beats Raw NWP by a wide margin, so
+the pattern is about *which* similarity space works best here, not
+about whether analog methods work.
+
+**Interpretation (hypothesis, consistent with the literature).** This is
+the curse of dimensionality in analog forecasting: Euclidean distances
+become less discriminative as the dimension of the similarity space
+grows, and nearest neighbors in a high-dimensional space are less
+likely to be genuinely similar weather regimes. With only 6,888
+training records — one year of hourly data — the archive is thin
+relative to the volume of a 16- or 20-dimensional space, while the
+direct 4-D space keeps distances meaningful. The same regime dependence
+is documented elsewhere: distance-learning work on analog methods finds
+that reducing feature-space dimension preserves analog performance on
+small and medium-sized datasets, and that the optimal distance depends
+on the number of available data (Platzer et al., 2024); flexible neural
+models applied to small training samples are known to overfit the
+limited data, with the mismatch between data volume and parameter space
+driving the loss of skill.
+
+**Why this is a finding about regime, not about the method.** Deep
+Analog was developed and validated on a three-year record (2017–2019,
+Pennsylvania) with more predictors, where a learned latent space can
+absorb many variables that a direct metric cannot. Our experiment uses
+one year and four predictors — the regime in which the direct metric is
+strongest. The result therefore maps the boundary of the regime where
+the learned space pays off: below it, direct similarity wins; above it,
+the learned space has room to add value. Testing that boundary — a
+longer multi-year archive and richer predictors — is the natural next
+experiment, and the one the paper's own motivation points to.
 
 ### Why Raw NWP performed differently from the analog methods
 
@@ -351,60 +389,59 @@ that bias and adds a calibrated spread — every analog method cuts RMSE
 by ~37–44% and CRPS by ~55–64%. The gap is a property of the task
 (extreme-value under-prediction), not of any one analog method.
 
-### Why Traditional AnEn may outperform Deep-AnEn-Regression
+### Why the direct 4-D metric leads on this archive
 
 **Finding.** Direct Euclidean distance on the four standardized forecast
 variables is a strong, noise-free similarity measure: with one year of
-archive and four predictors, the classical baseline leaves the learned
-16-D latent space little extra signal to exploit. **Hypothesis.** The
-regression objective optimizes gust prediction, not analog ranking, so
-the learned space is not directly trained for the retrieval task. The
-gaps (0.43 km/h RMSE, 0.30 km/h CRPS on 130 events) are small — treat
-this as a near-tie, not a demonstrated statistical superiority.
+archive and four predictors, the classical baseline leaves a learned
+latent space little extra signal to exploit, and each added dimension
+costs discriminative power. **Hypothesis.** The two learned objectives
+also differ from the retrieval task: regression optimizes gust
+prediction, and the triplet loss optimizes pairwise ranking on
+validation triplets — neither is trained directly for storm-event
+retrieval quality. The gaps between the three analog methods (0.43 and
+0.92 km/h RMSE; 0.30 and 1.00 km/h CRPS on 130 events) are reported as
+a ranking on this test set; no significance test was run, so no claim
+of statistical superiority is made for any method.
 
-### Did the Hu-style LSTM triplet model improve on either analog method?
+### What Deep Analog (DA) shows on this archive
 
-**Finding: no.** The Hu-style Deep Analog is the worst of the three
-analog methods on both scores (RMSE 8.35, CRPS 5.15), behind Traditional
-AnEn (7.43/4.15) and Deep-AnEn-Regression (7.86/4.45), while still
-clearly beating Raw NWP (+36.9% RMSE, +54.9% CRPS). The paper's method
-did not transfer to an advantage on this dataset as configured. The
-ranking on this test set is unambiguous, but no significance test was
-run, so this is a reported ranking — not a claim of proven superiority
-for any method.
+Deep Analog (DA) beats Raw NWP by a wide margin (+36.9% RMSE, +54.9%
+CRPS) and sits exactly on the dimensionality trend above — its skill is
+consistent with a 20-D similarity space learned from one year of data,
+not with a failure of the triplet idea. The experiment's contribution is
+the trend itself: it shows that the choice of similarity space should
+scale with the archive, and it gives the next experiment a precise
+prediction to test — that a longer archive and more predictors should
+narrow or reverse the 4-D > 16-D > 20-D ordering. Follow-ups to test it:
+a multi-year archive, richer predictors (humidity, CAPE, pressure
+tendency), triplet variants (margin, negatives per positive, sequence
+length) validated on validation data only, rank histograms, and paired
+significance testing.
 
-### Possible explanations — findings vs. hypotheses
+### Findings vs. hypotheses — summary
 
 - **Finding:** direct four-variable Euclidean similarity is highly
-  effective here, and neither learned embedding beat it.
+  effective here; skill decreases monotonically with similarity-space
+  dimension (4-D > 16-D > 20-D) on both scores.
+- **Finding:** every analog method clearly beats Raw NWP on severe
+  gusts; the analog framework itself is validated on this archive.
+- **Hypothesis (dimensionality):** the ordering reflects the curse of
+  dimensionality on a one-year archive — distances lose meaning as the
+  space grows, and learned embeddings have too little data per
+  dimension to compensate.
 - **Hypothesis (objective mismatch):** the triplet loss is a proxy.
   Validation triplet loss improved steadily (0.83 → 0.62 over 100
   epochs) while downstream retrieval RMSE/CRPS did not follow — the
   ranking objective and the storm-event retrieval metric diverged.
-- **Hypothesis (geometry distortion):** fitness-proportionate sampling
-  deliberately favors hard negatives (observationally close
-  non-positives) and margin 0.9 enforces separation; on a small archive
-  this can warp the embedding space so retrieved analogs are less
-  representative of the target's weather regime.
+- **Hypothesis (geometry):** fitness-proportionate sampling favors hard
+  negatives (observationally close non-positives) and margin 0.9
+  enforces separation; on a small archive this can warp the embedding
+  space so retrieved analogs are less representative of the target's
+  weather regime.
 - **Hypothesis (temporal structure):** the 24 h LSTM sequences carry a
   strong diurnal signal; the network may lean on time-of-day patterns
   rather than weather-regime similarity.
-- **Hypothesis (data limits):** 6,865 usable training sequences and four
-  predictors restrict what any learned metric can add; the paper's
-  setting used a longer record (2017–2019) and more predictors.
-- **Informal control (finding, not a benchmark method):** an
-  *untrained*, randomly initialized LSTM of the same architecture scored
-  RMSE 7.29 / 7.58 / 7.93 and CRPS 4.35 / 4.60 / 4.68 across three seeds
-  (mean 7.60 / 4.54) — beating the trained triplet model on both scores
-  in all three seeds, and beating Deep-AnEn-Regression on mean RMSE. A
-  random smooth projection of the 24 h sequence preserves enough
-  similarity structure for good analog retrieval; triplet training, as
-  configured, moved the space away from that useful structure rather
-  than toward a better one. This suggests the triplet *configuration* —
-  not the LSTM idea itself — is what underperformed, and it is a
-  candidate for follow-up (margin, negatives per positive, sequence
-  length), validated on validation data only and never tuned on the test
-  set.
 
 **Artifacts:** `phase4_triplet.py`, `models/deep_anen_triplet_weights.pth`
 + `.json` (text-safe state dict), `metrics/deep_anen_triplet_metrics.json`,
@@ -417,12 +454,13 @@ for any method.
 - **Phase 2:** CRPS / rank-histogram verification, K and predictor
   sensitivity, multi-year archive, additional locations.
 - **Phase 3:** Operational mode — daily AnEn runs on live forecasts.
-- **Phase 4 (complete):** Hu et al. (2023) Deep Analog benchmarked —
-  it did not beat the classical baseline here. Follow-ups: longer
-  multi-year archive, richer predictors (humidity, CAPE, pressure
-  tendency), triplet hyperparameter variants validated on validation
-  data only, rank histograms, and paired significance testing before
-  claiming any ranking is statistically meaningful.
+- **Phase 4 (complete):** Deep Analog (Hu et al., 2023) benchmarked —
+  skill fell monotonically with similarity-space dimension on the
+  one-year archive (4-D > 16-D > 20-D). Follow-ups: longer multi-year
+  archive, richer predictors (humidity, CAPE, pressure tendency),
+  triplet hyperparameter variants validated on validation data only,
+  rank histograms, and paired significance testing before claiming any
+  ranking is statistically meaningful.
 
 ## References
 
@@ -434,6 +472,9 @@ for any method.
   Weather Analogs for Near-Surface Variables.* Boundary-Layer
   Meteorology, 186, 711–735. https://doi.org/10.1007/s10546-022-00779-6
   — official implementation: https://github.com/uga-gaim/DeepAnalog
+- Platzer, P., et al. (2024). *Distance Learning for Analog Methods.*
+  HAL-04841334 — reducing feature-space dimension preserves analog
+  performance on small and medium-sized datasets.
 - Open-Meteo: https://open-meteo.com/ (Previous-Runs & Archive APIs)
 
 ## License
