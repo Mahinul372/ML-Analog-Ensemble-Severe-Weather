@@ -1,0 +1,14 @@
+{
+  "regime": "nested_5yr",
+  "n_train_rows": 43080,
+  "n_test_high_gust_events": 1286,
+  "rmse_raw_nwp_kmh": 12.79,
+  "rmse_deep_anen_regression_kmh": 7.93,
+  "mae_deep_anen_regression_kmh": 6.15,
+  "rmse_skill_pct": 38.0,
+  "crps_raw_nwp_kmh": 10.87,
+  "crps_deep_anen_regression_kmh": 4.57,
+  "crps_skill_pct": 58.0,
+  "train_loss_final": 0.3983,
+  "val_loss_final": 0.3186
+}

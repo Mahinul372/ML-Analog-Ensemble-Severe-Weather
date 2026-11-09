@@ -1,0 +1,27 @@
+{
+  "method": "MOS (ordinary least-squares linear regression)",
+  "regime": "nested_5yr",
+  "n_train_rows": 43080,
+  "n_test_high_gust_events": 1286,
+  "predictors": [
+    "fcst_temp",
+    "fcst_wind",
+    "fcst_gust",
+    "fcst_press"
+  ],
+  "coefficients": {
+    "intercept": 23.674002252486083,
+    "fcst_temp": 0.17298838300750247,
+    "fcst_wind": 5.84311172616858,
+    "fcst_gust": 3.8437750361598204,
+    "fcst_press": -0.48211459459745737
+  },
+  "rmse_raw_nwp_kmh": 12.79,
+  "mae_raw_nwp_kmh": 10.87,
+  "crps_raw_nwp_kmh": 10.87,
+  "rmse_mos_kmh": 7.71,
+  "mae_mos_kmh": 6.03,
+  "crps_mos_kmh": 6.03,
+  "rmse_skill_vs_raw_pct": 39.7,
+  "crps_skill_vs_raw_pct": 44.5
+}

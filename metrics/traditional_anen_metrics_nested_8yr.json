@@ -1,0 +1,11 @@
+{
+  "regime": "nested_8yr",
+  "n_train_rows": 67920,
+  "n_test_storm_events": 1286,
+  "rmse_raw_nwp_kmh": 12.79,
+  "rmse_traditional_anen_kmh": 7.55,
+  "rmse_skill_pct": 40.9,
+  "crps_raw_nwp_kmh": 10.87,
+  "crps_traditional_anen_kmh": 4.26,
+  "crps_skill_pct": 60.8
+}

@@ -1,0 +1,1172 @@
+{
+  "method": "Nested-archive comparison (Phase B)",
+  "test_period": "2025-11-01 00:00 -> 2026-11-01 23:00 UTC (fixed for all archives)",
+  "validation_period": "2025-10-01 -> 2025-10-31 UTC",
+  "n_test_high_gust_events": 1286,
+  "n_episodes_declustering_gap_24h": 81,
+  "bootstrap": {
+    "blocks": "independent episodes (gap >= 24 h between events)",
+    "B": 2000,
+    "seed": 42,
+    "ci": "percentile 95%"
+  },
+  "dm_variant": "d = |e_method| - |e_reference| on per-event absolute errors; Newey-West HAC, Bartlett kernel, lag h = floor(T^(1/3)); two-sided normal p; negative mean diff means the method beats the reference",
+  "regimes": {
+    "nested_1yr": {
+      "regime": "nested_1yr",
+      "n_test_high_gust_events": 1286,
+      "n_episodes": 81,
+      "scores": {
+        "Raw NWP": {
+          "rmse_kmh": 12.79,
+          "mae_kmh": 10.87,
+          "crps_kmh": 10.87
+        },
+        "MOS": {
+          "rmse_kmh": 7.38,
+          "mae_kmh": 5.72,
+          "crps_kmh": 5.72
+        },
+        "Traditional AnEn": {
+          "rmse_kmh": 8.13,
+          "mae_kmh": 6.23,
+          "crps_kmh": 4.66
+        },
+        "Deep-AnEn-Regression": {
+          "rmse_kmh": 8.22,
+          "mae_kmh": 6.42,
+          "crps_kmh": 4.76
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "rmse_kmh": 10.44,
+          "mae_kmh": 8.03,
+          "crps_kmh": 6.23
+        }
+      },
+      "calibration": {
+        "Traditional AnEn": {
+          "rank_histogram_counts": [
+            16,
+            14,
+            20,
+            35,
+            40,
+            52,
+            61,
+            85,
+            80,
+            90,
+            105,
+            96,
+            129,
+            100,
+            138,
+            225
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.729,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.69,
+          "spread_skill_ratio": 0.823
+        },
+        "Deep-AnEn-Regression": {
+          "rank_histogram_counts": [
+            8,
+            15,
+            22,
+            47,
+            41,
+            50,
+            55,
+            90,
+            85,
+            90,
+            108,
+            97,
+            114,
+            101,
+            139,
+            224
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.741,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 7.0,
+          "spread_skill_ratio": 0.851
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "rank_histogram_counts": [
+            15,
+            44,
+            41,
+            44,
+            35,
+            57,
+            61,
+            57,
+            61,
+            74,
+            85,
+            79,
+            89,
+            100,
+            138,
+            306
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.661,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.9,
+          "spread_skill_ratio": 0.661
+        }
+      },
+      "diebold_mariano": {
+        "vs_Traditional AnEn": {
+          "Raw NWP": {
+            "dm_statistic": 13.568,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": 4.644,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "MOS": {
+            "dm_statistic": -3.318,
+            "p_value": 0.0009078722114272963,
+            "mean_abs_error_diff_kmh": -0.502,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": 2.451,
+            "p_value": 0.01426349823169315,
+            "mean_abs_error_diff_kmh": 0.191,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": 4.853,
+            "p_value": 1.2168259784228752e-06,
+            "mean_abs_error_diff_kmh": 1.799,
+            "n": 1286,
+            "lag_h": 10
+          }
+        },
+        "vs_Raw NWP": {
+          "MOS": {
+            "dm_statistic": -18.12,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -5.146,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Traditional AnEn": {
+            "dm_statistic": -13.568,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.644,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": -13.246,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.453,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": -5.127,
+            "p_value": 2.944209833710687e-07,
+            "mean_abs_error_diff_kmh": -2.845,
+            "n": 1286,
+            "lag_h": 10
+          }
+        }
+      },
+      "block_bootstrap": {
+        "vs_Traditional AnEn": {
+          "Raw NWP": {
+            "rmse_diff_kmh": {
+              "mean": 4.663,
+              "ci_lower": 3.745,
+              "ci_upper": 5.586,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 6.235,
+              "ci_lower": 5.413,
+              "ci_upper": 7.156,
+              "n_bootstrap": 2000
+            }
+          },
+          "MOS": {
+            "rmse_diff_kmh": {
+              "mean": -0.75,
+              "ci_lower": -1.311,
+              "ci_upper": -0.286,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 1.071,
+              "ci_lower": 0.775,
+              "ci_upper": 1.351,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep-AnEn-Regression": {
+            "rmse_diff_kmh": {
+              "mean": 0.09,
+              "ci_lower": -0.1,
+              "ci_upper": 0.288,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 0.104,
+              "ci_lower": -0.027,
+              "ci_upper": 0.242,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "rmse_diff_kmh": {
+              "mean": 2.277,
+              "ci_lower": 1.304,
+              "ci_upper": 3.385,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 1.569,
+              "ci_lower": 0.96,
+              "ci_upper": 2.267,
+              "n_bootstrap": 2000
+            }
+          }
+        },
+        "vs_Raw NWP": {
+          "MOS": {
+            "rmse_diff_kmh": {
+              "mean": -5.423,
+              "ci_lower": -6.171,
+              "ci_upper": -4.699,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -5.171,
+              "ci_lower": -5.96,
+              "ci_upper": -4.453,
+              "n_bootstrap": 2000
+            }
+          },
+          "Traditional AnEn": {
+            "rmse_diff_kmh": {
+              "mean": -4.667,
+              "ci_lower": -5.613,
+              "ci_upper": -3.68,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -6.226,
+              "ci_lower": -7.171,
+              "ci_upper": -5.38,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep-AnEn-Regression": {
+            "rmse_diff_kmh": {
+              "mean": -4.601,
+              "ci_lower": -5.492,
+              "ci_upper": -3.739,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -6.131,
+              "ci_lower": -7.028,
+              "ci_upper": -5.269,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "rmse_diff_kmh": {
+              "mean": -2.404,
+              "ci_lower": -4.013,
+              "ci_upper": -0.767,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -4.666,
+              "ci_lower": -6.051,
+              "ci_upper": -3.244,
+              "n_bootstrap": 2000
+            }
+          }
+        }
+      }
+    },
+    "nested_3yr": {
+      "regime": "nested_3yr",
+      "n_test_high_gust_events": 1286,
+      "n_episodes": 81,
+      "scores": {
+        "Raw NWP": {
+          "rmse_kmh": 12.79,
+          "mae_kmh": 10.87,
+          "crps_kmh": 10.87
+        },
+        "MOS": {
+          "rmse_kmh": 7.81,
+          "mae_kmh": 6.12,
+          "crps_kmh": 6.12
+        },
+        "Traditional AnEn": {
+          "rmse_kmh": 8.29,
+          "mae_kmh": 6.41,
+          "crps_kmh": 4.81
+        },
+        "Deep-AnEn-Regression": {
+          "rmse_kmh": 8.35,
+          "mae_kmh": 6.51,
+          "crps_kmh": 4.86
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "rmse_kmh": 9.56,
+          "mae_kmh": 7.21,
+          "crps_kmh": 5.6
+        }
+      },
+      "calibration": {
+        "Traditional AnEn": {
+          "rank_histogram_counts": [
+            17,
+            10,
+            30,
+            28,
+            48,
+            54,
+            42,
+            51,
+            76,
+            90,
+            94,
+            98,
+            90,
+            125,
+            168,
+            265
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.684,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.0,
+          "spread_skill_ratio": 0.724
+        },
+        "Deep-AnEn-Regression": {
+          "rank_histogram_counts": [
+            14,
+            12,
+            15,
+            35,
+            36,
+            57,
+            44,
+            51,
+            78,
+            98,
+            86,
+            88,
+            118,
+            143,
+            144,
+            267
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.697,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.2,
+          "spread_skill_ratio": 0.743
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "rank_histogram_counts": [
+            10,
+            6,
+            13,
+            24,
+            35,
+            38,
+            50,
+            45,
+            65,
+            73,
+            98,
+            114,
+            124,
+            131,
+            173,
+            287
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.677,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.21,
+          "spread_skill_ratio": 0.649
+        }
+      },
+      "diebold_mariano": {
+        "vs_Traditional AnEn": {
+          "Raw NWP": {
+            "dm_statistic": 13.557,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": 4.459,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "MOS": {
+            "dm_statistic": -2.09,
+            "p_value": 0.03662759642383939,
+            "mean_abs_error_diff_kmh": -0.286,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": 1.543,
+            "p_value": 0.12282882756510638,
+            "mean_abs_error_diff_kmh": 0.095,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": 2.909,
+            "p_value": 0.0036201256276722216,
+            "mean_abs_error_diff_kmh": 0.802,
+            "n": 1286,
+            "lag_h": 10
+          }
+        },
+        "vs_Raw NWP": {
+          "MOS": {
+            "dm_statistic": -18.061,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.746,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Traditional AnEn": {
+            "dm_statistic": -13.557,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.459,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": -13.455,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.364,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": -7.438,
+            "p_value": 1.0258460747536446e-13,
+            "mean_abs_error_diff_kmh": -3.658,
+            "n": 1286,
+            "lag_h": 10
+          }
+        }
+      },
+      "block_bootstrap": {
+        "vs_Traditional AnEn": {
+          "Raw NWP": {
+            "rmse_diff_kmh": {
+              "mean": 4.507,
+              "ci_lower": 3.658,
+              "ci_upper": 5.379,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 6.083,
+              "ci_lower": 5.287,
+              "ci_upper": 6.994,
+              "n_bootstrap": 2000
+            }
+          },
+          "MOS": {
+            "rmse_diff_kmh": {
+              "mean": -0.473,
+              "ci_lower": -0.956,
+              "ci_upper": -0.087,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 1.32,
+              "ci_lower": 1.043,
+              "ci_upper": 1.591,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep-AnEn-Regression": {
+            "rmse_diff_kmh": {
+              "mean": 0.062,
+              "ci_lower": -0.051,
+              "ci_upper": 0.165,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 0.055,
+              "ci_lower": -0.024,
+              "ci_upper": 0.132,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "rmse_diff_kmh": {
+              "mean": 1.235,
+              "ci_lower": 0.268,
+              "ci_upper": 2.258,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 0.773,
+              "ci_lower": 0.218,
+              "ci_upper": 1.392,
+              "n_bootstrap": 2000
+            }
+          }
+        },
+        "vs_Raw NWP": {
+          "MOS": {
+            "rmse_diff_kmh": {
+              "mean": -4.986,
+              "ci_lower": -5.687,
+              "ci_upper": -4.314,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -4.768,
+              "ci_lower": -5.49,
+              "ci_upper": -4.105,
+              "n_bootstrap": 2000
+            }
+          },
+          "Traditional AnEn": {
+            "rmse_diff_kmh": {
+              "mean": -4.509,
+              "ci_lower": -5.428,
+              "ci_upper": -3.611,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -6.073,
+              "ci_lower": -6.973,
+              "ci_upper": -5.275,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep-AnEn-Regression": {
+            "rmse_diff_kmh": {
+              "mean": -4.471,
+              "ci_lower": -5.382,
+              "ci_upper": -3.608,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -6.029,
+              "ci_lower": -6.865,
+              "ci_upper": -5.241,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "rmse_diff_kmh": {
+              "mean": -3.254,
+              "ci_lower": -4.759,
+              "ci_upper": -1.641,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -5.298,
+              "ci_lower": -6.472,
+              "ci_upper": -4.109,
+              "n_bootstrap": 2000
+            }
+          }
+        }
+      }
+    },
+    "nested_5yr": {
+      "regime": "nested_5yr",
+      "n_test_high_gust_events": 1286,
+      "n_episodes": 81,
+      "scores": {
+        "Raw NWP": {
+          "rmse_kmh": 12.79,
+          "mae_kmh": 10.87,
+          "crps_kmh": 10.87
+        },
+        "MOS": {
+          "rmse_kmh": 7.71,
+          "mae_kmh": 6.03,
+          "crps_kmh": 6.03
+        },
+        "Traditional AnEn": {
+          "rmse_kmh": 7.9,
+          "mae_kmh": 6.07,
+          "crps_kmh": 4.51
+        },
+        "Deep-AnEn-Regression": {
+          "rmse_kmh": 7.93,
+          "mae_kmh": 6.15,
+          "crps_kmh": 4.57
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "rmse_kmh": 9.04,
+          "mae_kmh": 7.16,
+          "crps_kmh": 5.39
+        }
+      },
+      "calibration": {
+        "Traditional AnEn": {
+          "rank_histogram_counts": [
+            14,
+            22,
+            34,
+            32,
+            43,
+            52,
+            51,
+            54,
+            78,
+            86,
+            100,
+            104,
+            121,
+            111,
+            165,
+            219
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.716,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.07,
+          "spread_skill_ratio": 0.769
+        },
+        "Deep-AnEn-Regression": {
+          "rank_histogram_counts": [
+            15,
+            19,
+            22,
+            34,
+            46,
+            38,
+            56,
+            67,
+            85,
+            80,
+            96,
+            100,
+            120,
+            123,
+            152,
+            233
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.722,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.28,
+          "spread_skill_ratio": 0.792
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "rank_histogram_counts": [
+            7,
+            16,
+            20,
+            29,
+            51,
+            40,
+            46,
+            49,
+            67,
+            75,
+            89,
+            89,
+            123,
+            141,
+            207,
+            237
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.698,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.65,
+          "spread_skill_ratio": 0.735
+        }
+      },
+      "diebold_mariano": {
+        "vs_Traditional AnEn": {
+          "Raw NWP": {
+            "dm_statistic": 15.145,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": 4.802,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "MOS": {
+            "dm_statistic": -0.279,
+            "p_value": 0.7803133658392296,
+            "mean_abs_error_diff_kmh": -0.034,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": 1.459,
+            "p_value": 0.1444725225072605,
+            "mean_abs_error_diff_kmh": 0.078,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": 5.132,
+            "p_value": 2.862646395485058e-07,
+            "mean_abs_error_diff_kmh": 1.094,
+            "n": 1286,
+            "lag_h": 10
+          }
+        },
+        "vs_Raw NWP": {
+          "MOS": {
+            "dm_statistic": -18.377,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.836,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Traditional AnEn": {
+            "dm_statistic": -15.145,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.802,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": -15.381,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.724,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": -10.23,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -3.708,
+            "n": 1286,
+            "lag_h": 10
+          }
+        }
+      },
+      "block_bootstrap": {
+        "vs_Traditional AnEn": {
+          "Raw NWP": {
+            "rmse_diff_kmh": {
+              "mean": 4.894,
+              "ci_lower": 4.157,
+              "ci_upper": 5.682,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 6.381,
+              "ci_lower": 5.624,
+              "ci_upper": 7.249,
+              "n_bootstrap": 2000
+            }
+          },
+          "MOS": {
+            "rmse_diff_kmh": {
+              "mean": -0.191,
+              "ci_lower": -0.538,
+              "ci_upper": 0.121,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 1.526,
+              "ci_lower": 1.32,
+              "ci_upper": 1.755,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep-AnEn-Regression": {
+            "rmse_diff_kmh": {
+              "mean": 0.029,
+              "ci_lower": -0.058,
+              "ci_upper": 0.117,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 0.058,
+              "ci_lower": -0.01,
+              "ci_upper": 0.122,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "rmse_diff_kmh": {
+              "mean": 1.141,
+              "ci_lower": 0.561,
+              "ci_upper": 1.695,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 0.871,
+              "ci_lower": 0.476,
+              "ci_upper": 1.281,
+              "n_bootstrap": 2000
+            }
+          }
+        },
+        "vs_Raw NWP": {
+          "MOS": {
+            "rmse_diff_kmh": {
+              "mean": -5.089,
+              "ci_lower": -5.787,
+              "ci_upper": -4.412,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -4.859,
+              "ci_lower": -5.587,
+              "ci_upper": -4.195,
+              "n_bootstrap": 2000
+            }
+          },
+          "Traditional AnEn": {
+            "rmse_diff_kmh": {
+              "mean": -4.891,
+              "ci_lower": -5.732,
+              "ci_upper": -4.105,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -6.37,
+              "ci_lower": -7.244,
+              "ci_upper": -5.614,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep-AnEn-Regression": {
+            "rmse_diff_kmh": {
+              "mean": -4.892,
+              "ci_lower": -5.723,
+              "ci_upper": -4.143,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -6.32,
+              "ci_lower": -7.14,
+              "ci_upper": -5.553,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "rmse_diff_kmh": {
+              "mean": -3.746,
+              "ci_lower": -4.561,
+              "ci_upper": -2.937,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -5.495,
+              "ci_lower": -6.303,
+              "ci_upper": -4.721,
+              "n_bootstrap": 2000
+            }
+          }
+        }
+      }
+    },
+    "nested_8yr": {
+      "regime": "nested_8yr",
+      "n_test_high_gust_events": 1286,
+      "n_episodes": 81,
+      "scores": {
+        "Raw NWP": {
+          "rmse_kmh": 12.79,
+          "mae_kmh": 10.87,
+          "crps_kmh": 10.87
+        },
+        "MOS": {
+          "rmse_kmh": 7.39,
+          "mae_kmh": 5.8,
+          "crps_kmh": 5.8
+        },
+        "Traditional AnEn": {
+          "rmse_kmh": 7.55,
+          "mae_kmh": 5.81,
+          "crps_kmh": 4.26
+        },
+        "Deep-AnEn-Regression": {
+          "rmse_kmh": 7.66,
+          "mae_kmh": 5.93,
+          "crps_kmh": 4.36
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "rmse_kmh": 9.62,
+          "mae_kmh": 7.5,
+          "crps_kmh": 5.62
+        }
+      },
+      "calibration": {
+        "Traditional AnEn": {
+          "rank_histogram_counts": [
+            19,
+            31,
+            36,
+            45,
+            59,
+            52,
+            71,
+            62,
+            79,
+            72,
+            110,
+            109,
+            97,
+            121,
+            135,
+            188
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.759,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.33,
+          "spread_skill_ratio": 0.838
+        },
+        "Deep-AnEn-Regression": {
+          "rank_histogram_counts": [
+            22,
+            24,
+            27,
+            51,
+            52,
+            47,
+            60,
+            81,
+            77,
+            74,
+            107,
+            112,
+            99,
+            126,
+            124,
+            203
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.753,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 6.44,
+          "spread_skill_ratio": 0.841
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "rank_histogram_counts": [
+            7,
+            12,
+            13,
+            25,
+            36,
+            38,
+            52,
+            52,
+            57,
+            67,
+            89,
+            125,
+            135,
+            147,
+            179,
+            252
+          ],
+          "rank_histogram_n_bins": 16,
+          "pi90_coverage": 0.699,
+          "pi90_coverage_nominal": 0.9,
+          "spread_kmh": 7.06,
+          "spread_skill_ratio": 0.734
+        }
+      },
+      "diebold_mariano": {
+        "vs_Traditional AnEn": {
+          "Raw NWP": {
+            "dm_statistic": 15.469,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": 5.062,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "MOS": {
+            "dm_statistic": -0.09,
+            "p_value": 0.9284588736976671,
+            "mean_abs_error_diff_kmh": -0.012,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": 2.272,
+            "p_value": 0.023067916880232575,
+            "mean_abs_error_diff_kmh": 0.122,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": 5.0,
+            "p_value": 5.74094853211804e-07,
+            "mean_abs_error_diff_kmh": 1.697,
+            "n": 1286,
+            "lag_h": 10
+          }
+        },
+        "vs_Raw NWP": {
+          "MOS": {
+            "dm_statistic": -18.395,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -5.074,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Traditional AnEn": {
+            "dm_statistic": -15.469,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -5.062,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": -15.392,
+            "p_value": 0.0,
+            "mean_abs_error_diff_kmh": -4.941,
+            "n": 1286,
+            "lag_h": 10
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": -6.916,
+            "p_value": 4.640954287538079e-12,
+            "mean_abs_error_diff_kmh": -3.366,
+            "n": 1286,
+            "lag_h": 10
+          }
+        }
+      },
+      "block_bootstrap": {
+        "vs_Traditional AnEn": {
+          "Raw NWP": {
+            "rmse_diff_kmh": {
+              "mean": 5.24,
+              "ci_lower": 4.49,
+              "ci_upper": 6.035,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 6.635,
+              "ci_lower": 5.859,
+              "ci_upper": 7.514,
+              "n_bootstrap": 2000
+            }
+          },
+          "MOS": {
+            "rmse_diff_kmh": {
+              "mean": -0.158,
+              "ci_lower": -0.55,
+              "ci_upper": 0.174,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 1.538,
+              "ci_lower": 1.315,
+              "ci_upper": 1.784,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep-AnEn-Regression": {
+            "rmse_diff_kmh": {
+              "mean": 0.11,
+              "ci_lower": 0.009,
+              "ci_upper": 0.202,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 0.102,
+              "ci_lower": 0.034,
+              "ci_upper": 0.164,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "rmse_diff_kmh": {
+              "mean": 2.02,
+              "ci_lower": 0.902,
+              "ci_upper": 3.163,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": 1.354,
+              "ci_lower": 0.74,
+              "ci_upper": 2.026,
+              "n_bootstrap": 2000
+            }
+          }
+        },
+        "vs_Raw NWP": {
+          "MOS": {
+            "rmse_diff_kmh": {
+              "mean": -5.404,
+              "ci_lower": -6.112,
+              "ci_upper": -4.725,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -5.1,
+              "ci_lower": -5.861,
+              "ci_upper": -4.41,
+              "n_bootstrap": 2000
+            }
+          },
+          "Traditional AnEn": {
+            "rmse_diff_kmh": {
+              "mean": -5.237,
+              "ci_lower": -6.072,
+              "ci_upper": -4.435,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -6.622,
+              "ci_lower": -7.522,
+              "ci_upper": -5.846,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep-AnEn-Regression": {
+            "rmse_diff_kmh": {
+              "mean": -5.155,
+              "ci_lower": -5.999,
+              "ci_upper": -4.39,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -6.528,
+              "ci_lower": -7.379,
+              "ci_upper": -5.738,
+              "n_bootstrap": 2000
+            }
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "rmse_diff_kmh": {
+              "mean": -3.201,
+              "ci_lower": -4.633,
+              "ci_upper": -1.719,
+              "n_bootstrap": 2000
+            },
+            "crps_diff_kmh": {
+              "mean": -5.259,
+              "ci_lower": -6.364,
+              "ci_upper": -4.195,
+              "n_bootstrap": 2000
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -217,13 +217,18 @@ def build_archive(start_date=START_DATE, end_date=END_DATE,
         df = pd.concat(chunks, ignore_index=True)
         print(f"Fetched {len(chunks)} year chunks, {len(df)} rows before cleaning")
 
-    # --- Clean: interpolate minor gaps, then drop any remaining NaNs --------
+    # --- Clean: drop any row with a missing value -------------------------
+    # No interpolation of any kind (reviewer revision 4): in particular
+    # obs_gust is never interpolated. Verified 2026-11-09 by re-fetching
+    # the full 2018-01-01 -> 2026-11-01 window with a fresh cache and no
+    # interpolation: the raw APIs return 77,448 rows with 0 NaN cells in
+    # every column, byte-identical to the current files — so the old
+    # interpolate/ffill/bfill calls were a no-op and removing them
+    # changes no value in the archive.
     n_before = len(df)
     df = df.set_index("timestamp").sort_index()
-    df = df.interpolate(method="time", limit=3)   # short gaps only
-    df = df.ffill(limit=3).bfill(limit=3)
     df = df.dropna().reset_index()
-    print(f"Dropped {n_before - len(df)} rows with unrecoverable gaps; "
+    print(f"Dropped {n_before - len(df)} rows with missing values; "
           f"final rows: {len(df)}")
 
     return df

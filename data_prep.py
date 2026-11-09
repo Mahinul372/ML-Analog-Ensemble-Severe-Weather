@@ -17,6 +17,15 @@ Rules enforced here:
     contiguous run of storm hours with the highest observed peak gust),
     not by visual inspection of which event flatters a model.
 
+Terminology (reviewer revision 3, Phase B): "high-gust events" are
+individual test-window hours with observed gust >= 35 km/h;
+"storm" is used ONLY for independent episodes obtained by
+declustering those events (gap >= 24 h between events = a new
+episode; see get_episodes). Observations are ERA5 REANALYSIS-based
+reference data (Open-Meteo Archive API), not independent station
+observations — verification is against reanalysis (see the
+limitations note in the README and the nested notebook).
+
 Two regimes share this protocol, branched by which CSV file is passed
 (see regime_for_path):
   * "1yr"  — data/atlanta_weather_archive_1yr.csv (2025-11-02 → 2026-11-01):
@@ -39,6 +48,7 @@ Two regimes share this protocol, branched by which CSV file is passed
 import os
 import re
 
+import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
@@ -54,10 +64,44 @@ VAL_END = pd.Timestamp("2026-08-31 23:00", tz="UTC")
 LONG_TRAIN_END = pd.Timestamp("2024-11-01 23:00", tz="UTC")
 LONG_VAL_END = pd.Timestamp("2025-11-01 23:00", tz="UTC")
 
-# Regime split boundaries, keyed by regime name.
+# Nested-archive design (reviewer, Phase B): ONE fixed test period and ONE
+# fixed validation period for every archive, with an identical training
+# cutoff — only the training length varies. The test period is
+# 2025-11-01 00:00 -> 2026-11-01 23:00 UTC (8,784 rows); validation is
+# 2025-10-01 -> 2025-10-31 (744 rows, early stopping and hyperparameter
+# selection only); training ends 2025-09-30 23:00 for every archive.
+# Training starts (reviewer's labels): 1-year 2024-11-01, 3-year
+# 2022-11-01, 5-year 2020-11-01, 8-year 2017-11-01. The 8-year archive
+# uses the forecast data available from the source, beginning
+# 1 January 2018 (the source's forecast record starts then), so its
+# effective training period is 2018-01-01 -> 2025-09-30 (7 years
+# 9 months). Expected split sizes (train / val / test rows):
+NESTED_TRAIN_END = pd.Timestamp("2025-09-30 23:00", tz="UTC")
+NESTED_VAL_END = pd.Timestamp("2025-10-31 23:00", tz="UTC")
+NESTED_TRAIN_START = {
+    "nested_1yr": pd.Timestamp("2024-11-01 00:00", tz="UTC"),
+    "nested_3yr": pd.Timestamp("2022-11-01 00:00", tz="UTC"),
+    "nested_5yr": pd.Timestamp("2020-11-01 00:00", tz="UTC"),
+    "nested_8yr": pd.Timestamp("2017-11-01 00:00", tz="UTC"),
+}
+NESTED_REGIMES = ["nested_1yr", "nested_3yr", "nested_5yr", "nested_8yr"]
+NESTED_EXPECTED_ROWS = {  # (train, val, test)
+    "nested_1yr": (8016, 744, 8784),
+    "nested_3yr": (25560, 744, 8784),
+    "nested_5yr": (43080, 744, 8784),
+    "nested_8yr": (67920, 744, 8784),
+}
+
+# Regime split boundaries, keyed by regime name. Each entry is
+# (train_start or None, train_end, val_end); train_start=None means
+# "from the start of the archive" (the 1-year and long regimes).
 SPLIT_BOUNDARIES = {
-    "1yr": (TRAIN_END, VAL_END),
-    "long": (LONG_TRAIN_END, LONG_VAL_END),
+    "1yr": (None, TRAIN_END, VAL_END),
+    "long": (None, LONG_TRAIN_END, LONG_VAL_END),
+    "nested_1yr": (NESTED_TRAIN_START["nested_1yr"], NESTED_TRAIN_END, NESTED_VAL_END),
+    "nested_3yr": (NESTED_TRAIN_START["nested_3yr"], NESTED_TRAIN_END, NESTED_VAL_END),
+    "nested_5yr": (NESTED_TRAIN_START["nested_5yr"], NESTED_TRAIN_END, NESTED_VAL_END),
+    "nested_8yr": (NESTED_TRAIN_START["nested_8yr"], NESTED_TRAIN_END, NESTED_VAL_END),
 }
 
 EXCLUSION_HOURS = 7 * 24  # +/-7-day window around each target timestamp
@@ -159,12 +203,21 @@ def split_archive(df, regime="1yr"):
     """Chronological train / validation / test splits (no shuffling).
 
     regime="1yr" (default) keeps the Phase 2/3/4 splits exactly;
-    regime="long" uses the long-archive hard chronological barrier.
+    regime="long" uses the long-archive hard chronological barrier;
+    regime="nested_*" uses the nested design (fixed test 2025-11-01 ->
+    2026-11-01 and validation 2025-10-01 -> 2025-10-31 for every
+    archive, training from the regime's start date to 2025-09-30).
     """
     if regime not in SPLIT_BOUNDARIES:
-        raise ValueError(f"unknown regime {regime!r} (expected '1yr' or 'long')")
-    train_end, val_end = SPLIT_BOUNDARIES[regime]
-    train_df = df[df["timestamp"] <= train_end].reset_index(drop=True)
+        raise ValueError(f"unknown regime {regime!r} (expected one of "
+                         f"{sorted(SPLIT_BOUNDARIES)})")
+    train_start, train_end, val_end = SPLIT_BOUNDARIES[regime]
+    if train_start is None:
+        train_df = df[df["timestamp"] <= train_end].reset_index(drop=True)
+    else:
+        train_df = df[
+            (df["timestamp"] >= train_start) & (df["timestamp"] <= train_end)
+        ].reset_index(drop=True)
     val_df = df[
         (df["timestamp"] > train_end) & (df["timestamp"] <= val_end)
     ].reset_index(drop=True)
@@ -182,7 +235,11 @@ def load_and_split(path=None, regime=None):
     """
     if regime is None:
         regime = regime_for_path(path)
-    if regime == "long":
+    if regime == "long" or regime in NESTED_REGIMES:
+        # Nested regimes and the long regime all load the nine yearly
+        # files concatenated (the nested test window 2025-11-01 ->
+        # 2026-11-01 and validation window 2025-10-01 -> 2025-10-31 are
+        # inside the long archive's span).
         if path is None:
             df = load_long_archive()
         else:
@@ -199,6 +256,61 @@ def load_and_split(path=None, regime=None):
 def fit_feature_scaler(train_df):
     """StandardScaler fitted on the TRAINING split only."""
     return StandardScaler().fit(train_df[FEATURES])
+
+
+def get_episodes(events_df, gap_hours=24):
+    """Decluster test high-gust events into INDEPENDENT EPISODES.
+
+    Events are the test-window timestamps with obs_gust >= threshold
+    (see get_storm_events). Two consecutive events belong to the same
+    episode unless the time gap between them is >= `gap_hours`
+    (default 24 h). "Storm" is used ONLY for these declustered
+    episodes; individual threshold exceedances are "high-gust events".
+
+    Returns a list of dicts, one per episode, each with start/end
+    timestamps, peak timestamp/gust, event count and duration in hours.
+    """
+    events_df = events_df.sort_values("timestamp").reset_index(drop=True)
+    if len(events_df) == 0:
+        return []
+    episodes = []
+    start_idx = 0
+    for i in range(1, len(events_df) + 1):
+        if i == len(events_df) or (
+            events_df.loc[i, "timestamp"] - events_df.loc[i - 1, "timestamp"]
+        ) >= pd.Timedelta(hours=gap_hours):
+            part = events_df.loc[start_idx:i - 1]
+            peak_idx = part[TARGET].idxmax()
+            episodes.append({
+                "episode_start": part.loc[start_idx, "timestamp"],
+                "episode_end": part.loc[i - 1, "timestamp"],
+                "peak_timestamp": part.loc[peak_idx, "timestamp"],
+                "peak_gust": float(part.loc[peak_idx, TARGET]),
+                "n_events": int(len(part)),
+                "duration_hours": int(
+                    (part.loc[i - 1, "timestamp"]
+                     - part.loc[start_idx, "timestamp"]).total_seconds() // 3600) + 1,
+            })
+            start_idx = i
+    return episodes
+
+
+def assign_episode_ids(events_df, gap_hours=24):
+    """Episode id (0..n_episodes-1) for each row of an events frame.
+
+    Same declustering rule as get_episodes. Used to define the blocks
+    for the paired block bootstrap: resampling whole episodes preserves
+    the temporal dependence between events of the same storm.
+    """
+    events_df = events_df.sort_values("timestamp").reset_index(drop=True)
+    ids = np.zeros(len(events_df), dtype=int) if len(events_df) else np.array([], dtype=int)
+    ep = 0
+    for i in range(1, len(events_df)):
+        if (events_df.loc[i, "timestamp"] - events_df.loc[i - 1, "timestamp"]
+                ) >= pd.Timedelta(hours=gap_hours):
+            ep += 1
+        ids[i] = ep
+    return ids
 
 
 def get_storm_events(test_df, threshold=STORM_THRESHOLD):

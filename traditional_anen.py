@@ -177,6 +177,9 @@ def main():
     parser.add_argument("--archive", type=str, default=None,
                         help="archive CSV (default: 1-year file; regime "
                              "branches by filename)")
+    parser.add_argument("--regime", type=str, default=None,
+                        help="explicit regime (e.g. nested_1yr); loads the "
+                             "long archive yearly files for nested regimes")
     parser.add_argument("--metrics-out", type=str, default=None,
                         help="metrics JSON path (default: "
                              "metrics/traditional_anen_metrics.json)")
@@ -185,12 +188,16 @@ def main():
     args = parser.parse_args()
 
     here = os.path.dirname(os.path.abspath(__file__))
-    archive_path = args.archive or os.path.join(here, "data",
-                                                "atlanta_weather_archive_1yr.csv")
-    regime = regime_for_path(archive_path)
-    df = load_archive(archive_path)
+    if args.regime is not None:
+        from data_prep import load_and_split
+        df, _, _, _, regime = load_and_split(regime=args.regime)
+    else:
+        archive_path = args.archive or os.path.join(here, "data",
+                                                    "atlanta_weather_archive_1yr.csv")
+        regime = regime_for_path(archive_path)
+        df = load_archive(archive_path)
     engine = TraditionalAnalogEnsemble(df, regime=regime)
-    print(f"Archive: {archive_path} | regime: {regime}")
+    print(f"Archive: {args.archive or args.regime or 'default'} | regime: {regime}")
     print(f"Train: {len(engine.train_df)} | Val: {len(engine.val_df)} "
           f"| Test window: {len(engine.test_df)} rows")
 

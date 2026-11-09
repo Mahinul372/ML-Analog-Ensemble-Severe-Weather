@@ -258,7 +258,7 @@ def train_triplet_model(store, train_pos, val_pos, obs, timestamps,
                         device, max_epochs=MAX_EPOCHS,
                         anchors_per_epoch=ANCHORS_PER_EPOCH, seed=SEED,
                         verbose=True, ckpt_path=None, scaler=None,
-                        val_anchors_max=500):
+                        val_anchors_max=500, regime=None, resume_from=None):
     """Train DeepAnalogLSTM with RA triplets; early stopping on val loss.
 
     Validation triplets are built ONCE (fixed seed) from validation
@@ -272,6 +272,15 @@ def train_triplet_model(store, train_pos, val_pos, obs, timestamps,
     is given, the best model so far is saved to disk on EVERY
     improvement, so a killed run can still be evaluated from its best
     checkpoint.
+
+    resume_from: path of a checkpoint saved on a previous (killed) run
+    of the SAME regime/config. The model weights, loss history, best
+    epoch and best validation loss are restored and training continues
+    from the next epoch. This is near-exact: per-epoch triplet sampling
+    depends only on (seed + epoch), and the fixed validation set is
+    rebuilt identically (seed 123); only the Adam/scheduler state is
+    fresh (documented, not hidden). The early-stopping counter is
+    restored as epochs_trained - best_epoch.
     """
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -282,6 +291,32 @@ def train_triplet_model(store, train_pos, val_pos, obs, timestamps,
     loss_fn = nn.TripletMarginLoss(margin=MARGIN)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, factor=0.2, patience=5, min_lr=1e-5)
+
+    # Resume: restore weights + history + early-stopping state.
+    history = {"train_loss": [], "val_loss": []}
+    best_val = float("inf")
+    best_state = None
+    best_epoch = 0
+    counter = 0
+    start_epoch = 1
+    if resume_from is not None and os.path.exists(resume_from):
+        ckpt = torch.load(resume_from, map_location=device, weights_only=True)
+        model.load_state_dict(ckpt["model_state_dict"])
+        history = ckpt["history"]
+        best_val = history["best_val_loss"]
+        best_epoch = history["best_epoch"]
+        start_epoch = history["epochs_trained"] + 1
+        counter = history["epochs_trained"] - best_epoch
+        best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+        if verbose:
+            print(f"Resumed from {resume_from}: best val {best_val:.4f} "
+                  f"(epoch {best_epoch}), continuing from epoch {start_epoch}, "
+                  f"no-improvement counter {counter} (optimizer/scheduler state fresh).")
+        if start_epoch > max_epochs:
+            print("Resume point is already at/past max epochs; evaluating the checkpoint.")
+            model.eval()
+            history["early_stopped"] = counter >= PATIENCE
+            return model, history
 
     # Fixed validation triplet set (stable early-stopping signal).
     val_rng = np.random.default_rng(123)
@@ -313,13 +348,8 @@ def train_triplet_model(store, train_pos, val_pos, obs, timestamps,
                 losses.append(loss.item())
         return float(np.mean(losses))
 
-    history = {"train_loss": [], "val_loss": []}
-    best_val = float("inf")
-    best_state = None
-    best_epoch = 0
-    counter = 0
-    epochs_trained = 0
-    for epoch in range(1, max_epochs + 1):
+    epochs_trained = start_epoch - 1
+    for epoch in range(start_epoch, max_epochs + 1):
         rng = np.random.default_rng(seed + epoch)
         anchors = rng.choice(train_pos, size=min(anchors_per_epoch, len(train_pos)),
                              replace=False)
@@ -338,7 +368,7 @@ def train_triplet_model(store, train_pos, val_pos, obs, timestamps,
             history["best_val_loss"] = best_val
             history["epochs_trained"] = epoch
             if ckpt_path is not None:
-                save_checkpoint(model, history, ckpt_path, scaler)
+                save_checkpoint(model, history, ckpt_path, scaler, regime=regime)
         else:
             counter += 1
         scheduler.step(val_loss)
@@ -452,7 +482,7 @@ def evaluate_phase4(model, store, train_pos, test_df, device,
 # ---------------------------------------------------------------------------
 # Checkpoint helpers (for the comparison workflow).
 # ---------------------------------------------------------------------------
-def save_checkpoint(model, history, path, scaler):
+def save_checkpoint(model, history, path, scaler, regime=None):
     torch.save({
         "model_state_dict": model.state_dict(),
         "config": {
@@ -464,6 +494,7 @@ def save_checkpoint(model, history, path, scaler):
             "num_analogs": NUM_ANALOGS,
             "fitness_num_negative": FITNESS_NUM_NEGATIVE,
             "anchors_per_epoch": ANCHORS_PER_EPOCH, "seed": SEED,
+            "regime": regime,
         },
         "history": {k: v for k, v in history.items()},
         "feat_scaler_mean": scaler.mean_.tolist(),
@@ -490,9 +521,17 @@ def main():
                              "triplet set (default 500 -> 7,500 triplets)")
     parser.add_argument("--skip-train", action="store_true",
                         help="load the saved checkpoint and evaluate only")
+    parser.add_argument("--resume", action="store_true",
+                        help="if the checkpoint already exists, restore its "
+                             "weights/history and continue training from the "
+                             "next epoch (same regime/config; optimizer and "
+                             "scheduler state start fresh)")
     parser.add_argument("--archive", type=str, default=None,
                         help="archive CSV (default: 1-year file; regime "
                              "branches by filename)")
+    parser.add_argument("--regime", type=str, default=None,
+                        help="explicit regime (e.g. nested_1yr); loads the "
+                             "long archive yearly files for nested regimes")
     parser.add_argument("--ckpt-out", type=str, default=None,
                         help="checkpoint .pth path (default: "
                              "models/deep_anen_triplet_weights.pth)")
@@ -509,15 +548,25 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"PyTorch {torch.__version__} | device: {device}")
 
-    archive_path = args.archive or os.path.join(here, "data",
-                                                "atlanta_weather_archive_1yr.csv")
-    df, train_df, val_df, test_df, regime = load_and_split(archive_path)
-    # Verify split dimensions against data_prep outputs (not hardcoded).
-    print(f"Archive: {archive_path} | regime: {regime}")
+    if args.regime is not None:
+        from data_prep import NESTED_EXPECTED_ROWS, NESTED_REGIMES
+        df, train_df, val_df, test_df, regime = load_and_split(regime=args.regime)
+        print(f"Archive: regime {args.regime} | regime: {regime}")
+    else:
+        archive_path = args.archive or os.path.join(here, "data",
+                                                    "atlanta_weather_archive_1yr.csv")
+        df, train_df, val_df, test_df, regime = load_and_split(archive_path)
+        print(f"Archive: {archive_path} | regime: {regime}")
     print(f"Train: {len(train_df)} | Val: {len(val_df)} | Test: {len(test_df)}")
     if regime == "1yr":
         assert len(train_df) == 6888 and len(val_df) == 384 and len(test_df) == 1488
         n_events_expected = 130
+    elif regime in NESTED_REGIMES:
+        exp = NESTED_EXPECTED_ROWS[regime]
+        assert (len(train_df), len(val_df), len(test_df)) == exp, \
+            f"{regime}: expected splits {exp}, got " \
+            f"({len(train_df)}, {len(val_df)}, {len(test_df)})"
+        n_events_expected = None
     else:
         assert len(train_df) == 59928 and len(val_df) == 8760 and len(test_df) == 8760
         n_events_expected = None
@@ -542,12 +591,14 @@ def main():
         print(f"Loaded checkpoint (best epoch {ckpt['history']['best_epoch']})")
         history = ckpt["history"]
     else:
+        resume_from = ckpt_path if (args.resume and os.path.exists(ckpt_path)) else None
         model, history = train_triplet_model(
             store, train_pos, val_pos, obs, timestamps, device,
             max_epochs=args.epochs, anchors_per_epoch=args.anchors_per_epoch,
             ckpt_path=ckpt_path, scaler=scaler,
-            val_anchors_max=args.val_anchors_max)
-        save_checkpoint(model, history, ckpt_path, scaler)
+            val_anchors_max=args.val_anchors_max, regime=regime,
+            resume_from=resume_from)
+        save_checkpoint(model, history, ckpt_path, scaler, regime=regime)
         # Text-safe copy of the weights (GitHub connector is text-only).
         weights_json = {k: v.cpu().tolist()
                         for k, v in model.state_dict().items()}
