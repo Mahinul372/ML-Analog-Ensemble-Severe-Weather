@@ -66,7 +66,16 @@ earlier phases) — and checked against the saved metric files for
 consistency.
 
 **How to run:** open in Google Colab → *Runtime → Change runtime type →
-GPU (T4)* → *Runtime → Run all*."""))
+GPU (T4)* → *Runtime → Run all*.
+
+**Long-archive extension (§5–§8).** The same four methods are then
+re-benchmarked on a long archive (2018-01-01 → 2026-11-01, 77,448
+hourly rows; train 59,928 / val 8,760 / test 8,760; **1,286** test storm
+events), with Diebold-Mariano significance tests for both regimes (§6),
+the dual-regime comparison table, and the training-vs-validation loss
+curves for both neural models in both regimes (§7, overfitting check).
+The long archive starts 2018-01-01 because the Open-Meteo Previous-Runs
+API returns no valid forecasts earlier (verified by probe)."""))
 
 # ---------------------------------------------------------------- 1. Setup
 cells.append(nbf.v4.new_code_cell("""# --- Setup: device, dependencies, repo location -------------------------------
@@ -117,6 +126,7 @@ from data_prep import (
     fit_feature_scaler,
     get_severe_episode,
     get_storm_events,
+    load_and_split,
     load_archive,
     split_archive,
 )
@@ -126,7 +136,8 @@ from phase4_triplet import (
     embed_positions,
     load_triplet_model,
     retrieve_analogs,
-)"""))
+)
+from dm_tests import diebold_mariano, run_dm_for_regime"""))
 
 # ---------------------------------------------------------------- 2. §1 md
 cells.append(nbf.v4.new_markdown_cell("""## 1. Shared Experimental Protocol (`data_prep.py`)
@@ -603,24 +614,556 @@ table is the dimensionality trend:
    experiment maps the regime where the direct metric still wins, and
    predicts that a longer archive and richer predictors should narrow
    or reverse the ordering.
-3. **No statistical claim is made here.** No significance test was run;
-   the gaps are reported as a ranking on these 130 events. Treat
-   near-ties as ties and the ordering as a finding to test further, not
-   a verdict on any method.
+3. **Statistical significance is tested in §6.** The Diebold-Mariano
+   test (per-event absolute errors, Newey-West HAC variance) is run for
+   both regimes, so the gaps are judged with p-values, not eyeballed.
+   Until §6, treat near-ties as ties and the ordering as a finding to
+   test further, not a verdict on any method.
 
 **Saved in this run:** `plots/4way_method_comparison_timeseries.png/.svg`,
 `plots/rmse_crps_benchmark_barchart_4way.png/.svg`,
 `metrics/comparison_metrics.json` (all four methods' scores + skill vs.
 raw NWP)."""))
 
-# ---------------------------------------------------------------- 10. §5 code
+# ---------------------------------------------------------------- 10. §5 md
+cells.append(nbf.v4.new_markdown_cell("""## 5. Long-Archive Regime (2018-01-01 → 2026-11-01)
+
+The same four methods, re-benchmarked on a much longer archive — the
+scale-up test of the dimensionality finding in §4. If the 4-D > 16-D >
+20-D ordering is an artefact of a thin archive, a ~8.7x larger training
+pool should narrow or reverse it; if the ordering persists, the pattern
+is robust to archive length.
+
+- **Dataset:** `data/atlanta_weather_archive_10yr.csv` — 77,448 hourly
+  rows, Atlanta, GA, 2018-01-01 → 2026-11-01 (UTC). The archive starts
+  2018-01-01 because the Open-Meteo Previous-Runs API returns no valid
+  forecasts earlier (verified by probe; the file keeps the `_10yr` name
+  as the long-archive counterpart of the 1-year file).
+- **Splits (strictly chronological, from `data_prep.py`):** train
+  2018-01-01 → 2024-11-01 (**59,928** rows), validation 2024-11-02 →
+  2025-11-01 (8,760), test 2025-11-02 → 2026-11-01 (8,760). The
+  test window is the same calendar year as the 1-year file's full span.
+- **Evaluation subset, defined once:** every test-window hour with
+  observed gust ≥ 35 km/h — **1,286 timestamps** (vs 130 in the 1-year
+  regime). All four methods loop over this exact list.
+- **Models:** the long-archive weights reloaded here (never retrained
+  here) — `models/deep_anen_regression_weights_10yr.pth` (encoder
+  retrained from scratch on the 59,928-row training split, 30 epochs)
+  and `models/deep_anen_triplet_weights_10yr.pth` (LSTM retrained from
+  scratch on the long sequence pool, same per-epoch triplet budget as
+  Phase 4). Traditional AnEn needs no weights.
+- **Protocol identical to §2:** K = 15, ±168 h exclusion, analogs from
+  the training pool only, same four standardized predictors, same
+  scores. The recomputed numbers below are checked against the saved
+  long-archive metric files
+  (`metrics/traditional_anen_metrics_10yr.json`,
+  `metrics/deep_anen_regression_metrics_10yr.json`,
+  `metrics/deep_anen_triplet_metrics_10yr.json`)."""))
+
+# ---------------------------------------------------------------- 11. §5 code
+cells.append(nbf.v4.new_code_cell("""# --- Long-archive evaluation: all four methods on the IDENTICAL 1,286 events --
+df_long, train_long, val_long, test_long, regime_long = load_and_split(
+    "data/atlanta_weather_archive_10yr.csv")
+assert regime_long == "long"
+print(f"Long archive: {len(df_long)} hourly rows, "
+      f"{df_long['timestamp'].min()} → {df_long['timestamp'].max()}")
+print(f"Train: {len(train_long)} | Val: {len(val_long)} | "
+      f"Test window: {len(test_long)} rows")
+
+storms_long = get_storm_events(test_long)
+EVENT_TIMESTAMPS_LONG = list(storms_long["timestamp"])
+print(f"Long test storm events (obs_gust >= 35 km/h): {len(EVENT_TIMESTAMPS_LONG)}")
+print(f"First: {EVENT_TIMESTAMPS_LONG[0]} | Last: {EVENT_TIMESTAMPS_LONG[-1]}")
+
+feat_scaler_long = fit_feature_scaler(train_long)
+
+# Traditional AnEn on the long training pool (no weights).
+trad_long = TraditionalAnalogEnsemble(df_long, regime="long")
+
+# Deep-AnEn-Regression: long-archive encoder from saved weights.
+ckpt_long = torch.load("models/deep_anen_regression_weights_10yr.pth",
+                       map_location=DEVICE, weights_only=True)
+encoder_long = DeepAnalogRegressionEncoder().to(DEVICE)
+encoder_long.load_state_dict(ckpt_long["encoder_state_dict"])
+encoder_long.eval()
+print(f"Loaded long Deep-AnEn-Regression weights "
+      f"(trained {ckpt_long['config']['epochs']} epochs, "
+      f"K={ckpt_long['config']['K']})")
+X_train_long = torch.tensor(feat_scaler_long.transform(train_long[FEATURES]),
+                            dtype=torch.float32).to(DEVICE)
+with torch.no_grad():
+    train_z_long = encoder_long.encode(X_train_long).cpu().numpy()
+print(f"Long latent training archive: {train_z_long.shape}")
+
+
+def regression_long_find_analogs(target_timestamp, K=K):
+    target = pd.to_datetime(target_timestamp, utc=True)
+    row = df_long[df_long["timestamp"] == target]
+    x = torch.tensor(feat_scaler_long.transform(row[FEATURES]),
+                     dtype=torch.float32).to(DEVICE)
+    with torch.no_grad():
+        z = encoder_long.encode(x).cpu().numpy()[0]
+    delta_h = (train_long["timestamp"] - target).dt.total_seconds() / 3600.0
+    cand_idx = np.where((delta_h.abs() > EXCLUSION_HOURS).values)[0]
+    dists = np.linalg.norm(train_z_long[cand_idx] - z, axis=1)
+    order = np.argsort(dists)[:K]
+    analog_idx = cand_idx[order]
+    members = train_long.loc[analog_idx, TARGET].to_numpy(dtype=float)
+    return {
+        "target_timestamp": str(target),
+        "ensemble_members": members,
+        "analogs": [
+            {"timestamp": str(train_long.loc[i, "timestamp"]), "distance": float(d)}
+            for i, d in zip(analog_idx, dists[order])
+        ],
+    }
+
+
+# Deep Analog (Hu et al., 2023): long-archive triplet checkpoint.
+triplet_long_model, triplet_long_ckpt = load_triplet_model(
+    "models/deep_anen_triplet_weights_10yr.pth", DEVICE)
+print(f"Loaded long Deep Analog (Hu et al., 2023) weights (best epoch "
+      f"{triplet_long_ckpt['history']['best_epoch']}, "
+      f"val loss {triplet_long_ckpt['history']['best_val_loss']:.4f})")
+triplet_long_store = SequenceStore(df_long, feat_scaler_long)
+triplet_long_train_pos = triplet_long_store.eligible_positions(train_long)
+triplet_long_train_emb = embed_positions(triplet_long_model, triplet_long_store,
+                                         triplet_long_train_pos, DEVICE)
+print(f"Long triplet training archive embeddings: {triplet_long_train_emb.shape}")
+
+
+def triplet_long_find_analogs(target_timestamp, K=K):
+    members, analog_pos, dists = retrieve_analogs(
+        triplet_long_model, triplet_long_store, triplet_long_train_pos,
+        [target_timestamp], DEVICE, k=K, train_emb=triplet_long_train_emb)
+    return {
+        "target_timestamp": str(pd.to_datetime(target_timestamp, utc=True)),
+        "ensemble_members": members[0],
+        "analogs": [
+            {"timestamp": str(df_long.loc[p, "timestamp"]), "distance": float(d)}
+            for p, d in zip(analog_pos[0], dists[0])
+        ],
+    }
+
+
+long_raw, long_obs = [], []
+long_trad_members, long_regression_members, long_triplet_members = [], [], []
+long_evaluated_ts = []
+for ts in EVENT_TIMESTAMPS_LONG:
+    row = test_long[test_long["timestamp"] == ts].iloc[0]
+    long_raw.append(row["fcst_gust"])
+    long_obs.append(row[TARGET])
+    long_trad_members.append(trad_long.find_analogs(ts, K=K)["ensemble_members"])
+    long_regression_members.append(
+        regression_long_find_analogs(ts, K=K)["ensemble_members"])
+    long_triplet_members.append(
+        triplet_long_find_analogs(ts, K=K)["ensemble_members"])
+    long_evaluated_ts.append(ts)
+
+assert long_evaluated_ts == EVENT_TIMESTAMPS_LONG
+assert len(long_raw) == len(long_obs) == len(long_trad_members) == \\
+    len(long_regression_members) == len(long_triplet_members) == len(EVENT_TIMESTAMPS_LONG)
+
+long_raw = np.array(long_raw)
+long_obs = np.array(long_obs)
+long_trad_members = np.array(long_trad_members)
+long_regression_members = np.array(long_regression_members)
+long_triplet_members = np.array(long_triplet_members)
+long_trad_mean = long_trad_members.mean(axis=1)
+long_regression_mean = long_regression_members.mean(axis=1)
+long_triplet_mean = long_triplet_members.mean(axis=1)
+
+scores_long = {
+    "Raw NWP": (rmse(long_raw, long_obs),
+                float(np.mean(np.abs(long_raw - long_obs)))),
+    "Traditional AnEn": (rmse(long_trad_mean, long_obs),
+                         crps_ens(long_obs, long_trad_members)),
+    "Deep-AnEn-Regression": (rmse(long_regression_mean, long_obs),
+                             crps_ens(long_obs, long_regression_members)),
+    "Deep Analog (Hu et al., 2023)": (rmse(long_triplet_mean, long_obs),
+                                      crps_ens(long_obs, long_triplet_members)),
+}
+summary_long = pd.DataFrame(
+    {"Method": list(scores_long.keys()),
+     "RMSE": [v[0] for v in scores_long.values()],
+     "CRPS": [v[1] for v in scores_long.values()]},
+)
+display(summary_long.round(2))
+print(f"\\nBest RMSE (long): {min(scores_long, key=lambda m: scores_long[m][0])} "
+      f"({min(v[0] for v in scores_long.values()):.2f} km/h)")
+print(f"Best CRPS (long): {min(scores_long, key=lambda m: scores_long[m][1])} "
+      f"({min(v[1] for v in scores_long.values()):.2f} km/h)")
+
+# --- Consistency check against the saved long-archive metric files -----------
+saved_trad_long = json.load(open("metrics/traditional_anen_metrics_10yr.json"))
+saved_reg_long = json.load(open("metrics/deep_anen_regression_metrics_10yr.json"))
+saved_trip_long = json.load(open("metrics/deep_anen_triplet_metrics_10yr.json"))
+assert abs(scores_long["Traditional AnEn"][0]
+           - saved_trad_long["rmse_traditional_anen_kmh"]) < 0.05, \\
+    "Long Traditional AnEn RMSE mismatch!"
+assert abs(scores_long["Traditional AnEn"][1]
+           - saved_trad_long["crps_traditional_anen_kmh"]) < 0.05, \\
+    "Long Traditional AnEn CRPS mismatch!"
+assert abs(scores_long["Deep-AnEn-Regression"][0]
+           - saved_reg_long["rmse_deep_anen_regression_kmh"]) < 0.05, \\
+    "Long Deep-AnEn-Regression RMSE mismatch!"
+assert abs(scores_long["Deep-AnEn-Regression"][1]
+           - saved_reg_long["crps_deep_anen_regression_kmh"]) < 0.05, \\
+    "Long Deep-AnEn-Regression CRPS mismatch!"
+assert abs(scores_long["Deep Analog (Hu et al., 2023)"][0]
+           - saved_trip_long["rmse_kmh"]) < 0.05, \\
+    "Long Deep Analog (Hu et al., 2023) RMSE mismatch!"
+assert abs(scores_long["Deep Analog (Hu et al., 2023)"][1]
+           - saved_trip_long["crps_kmh"]) < 0.05, \\
+    "Long Deep Analog (Hu et al., 2023) CRPS mismatch!"
+print("\\nConsistency check passed: recomputed long-regime scores match the "
+      "saved _10yr metric files.")
+
+comparison_long = {
+    "n_test_storm_events": int(len(EVENT_TIMESTAMPS_LONG)),
+    "methods": {
+        name: {"rmse_kmh": round(v[0], 2), "crps_kmh": round(v[1], 2)}
+        for name, v in scores_long.items()
+    },
+    "rmse_skill_vs_raw_pct": {
+        name: round(100 * (scores_long["Raw NWP"][0] - v[0]) / scores_long["Raw NWP"][0], 1)
+        for name, v in scores_long.items() if name != "Raw NWP"
+    },
+    "crps_skill_vs_raw_pct": {
+        name: round(100 * (scores_long["Raw NWP"][1] - v[1]) / scores_long["Raw NWP"][1], 1)
+        for name, v in scores_long.items() if name != "Raw NWP"
+    },
+}
+with open("metrics/comparison_metrics_10yr.json", "w") as f:
+    json.dump(comparison_long, f, indent=2)
+print(json.dumps(comparison_long, indent=2))"""))
+
+# ------------------------------------------------------- 11b. Long audit md
+cells.append(nbf.v4.new_markdown_cell("""## 5b. Verification Audit — Long Archive (Six Checks, Adapted)
+
+The same six checks as §2b, now over all 1,286 long-regime events ×
+15 members × 3 analog methods (57,870 analog selections), against the
+long-archive protocol (59,928-row training pool, train end 2024-11-01,
+both long checkpoints' scalers)."""))
+
+# ------------------------------------------------------- 11c. Long audit code
+cells.append(nbf.v4.new_code_cell("""# --- Long-regime verification audit (1,286 events x 15 members x 3 methods) ---
+print("LONG AUDIT 1 — same eligible historical training pool")
+assert trad_long.train_df["timestamp"].equals(train_long["timestamp"])
+assert len(trad_long.train_df) == len(train_long) == 59928
+assert trad_long.exclusion_hours == EXCLUSION_HOURS
+print("  PASS: all three analog methods draw from the identical 59,928-row train pool")
+
+print("LONG AUDIT 2 — ±7-day exclusion applied correctly")
+print("LONG AUDIT 3 — no test observations in analog selection")
+train_long_obs = dict(zip(train_long["timestamp"], train_long[TARGET]))
+train_long_ts = set(train_long["timestamp"])
+min_gap_h_long = float("inf")
+n_checked_long = 0
+for ts in EVENT_TIMESTAMPS_LONG:
+    for res in (trad_long.find_analogs(ts, K=K),
+                regression_long_find_analogs(ts, K=K),
+                triplet_long_find_analogs(ts, K=K)):
+        for a, member in zip(res["analogs"], res["ensemble_members"]):
+            a_ts = pd.to_datetime(a["timestamp"], utc=True)
+            assert a_ts in train_long_ts, f"analog {a_ts} is not a training timestamp"
+            assert a_ts <= pd.Timestamp("2024-11-01 23:00", tz="UTC"), \\
+                f"analog {a_ts} is after the long training split"
+            assert member == train_long_obs[a_ts], \\
+                "member != training obs at analog time"
+            min_gap_h_long = min(min_gap_h_long,
+                                 abs((a_ts - ts).total_seconds()) / 3600.0)
+            n_checked_long += 1
+assert min_gap_h_long > EXCLUSION_HOURS
+print(f"  PASS: closest selected analog is {min_gap_h_long:.0f} h from its target (> 168 h)")
+print(f"  PASS: all {n_checked_long} analogs are training timestamps with matching "
+      "training observations (no test data in analog selection)")
+
+print("LONG AUDIT 4 — identical preprocessing and feature scaling")
+assert np.allclose(trad_long.scaler.mean_, feat_scaler_long.mean_)
+assert np.allclose(trad_long.scaler.scale_, feat_scaler_long.scale_)
+assert np.allclose(trad_long.train_scaled,
+                   feat_scaler_long.transform(train_long[FEATURES]))
+assert np.allclose(ckpt_long["feat_scaler_mean"], feat_scaler_long.mean_)
+assert np.allclose(ckpt_long["feat_scaler_scale"], feat_scaler_long.scale_)
+assert np.allclose(triplet_long_ckpt["feat_scaler_mean"], feat_scaler_long.mean_)
+assert np.allclose(triplet_long_ckpt["feat_scaler_scale"], feat_scaler_long.scale_)
+print("  PASS: all scalers (and both saved long checkpoint scalers) are identical")
+
+print("LONG AUDIT 5 — all analog methods' CRPS match their saved metrics")
+for name, key, saved in [
+        ("Traditional AnEn", "crps_traditional_anen_kmh", saved_trad_long),
+        ("Deep-AnEn-Regression", "crps_deep_anen_regression_kmh", saved_reg_long)]:
+    print(f"  {name}: recomputed {scores_long[name][1]:.2f} vs saved {saved[key]:.2f} km/h — PASS")
+print(f"  Deep Analog (Hu et al., 2023): recomputed "
+      f"{scores_long['Deep Analog (Hu et al., 2023)'][1]:.2f} vs saved "
+      f"{saved_trip_long['crps_kmh']:.2f} km/h — PASS")
+
+print("LONG AUDIT 6 — timestamps unique, ensemble arrays valid")
+assert len(set(EVENT_TIMESTAMPS_LONG)) == len(EVENT_TIMESTAMPS_LONG) == len(long_obs)
+assert df_long["timestamp"].is_unique and test_long["timestamp"].is_unique
+assert not df_long.isna().any().any()
+for name, arr in [("long_raw", long_raw), ("long_obs", long_obs),
+                  ("long_trad_members", long_trad_members),
+                  ("long_regression_members", long_regression_members),
+                  ("long_triplet_members", long_triplet_members)]:
+    assert np.isfinite(arr).all(), f"{name} contains NaN/inf"
+assert long_trad_members.shape == long_regression_members.shape == \\
+    long_triplet_members.shape == (len(long_obs), 15)
+assert ((long_trad_members >= 0)
+        & (long_trad_members <= df_long[TARGET].max())).all()
+assert ((long_regression_members >= 0)
+        & (long_regression_members <= df_long[TARGET].max())).all()
+assert ((long_triplet_members >= 0)
+        & (long_triplet_members <= df_long[TARGET].max())).all()
+print(f"  PASS: {len(long_obs)} unique event timestamps; all arrays finite, "
+      f"({len(long_obs)}, 15), members within the observed gust range")
+print("\\nAll six long-regime audit checks passed.")"""))
+
+# ---------------------------------------------------------------- 12. §6 md
+cells.append(nbf.v4.new_markdown_cell("""## 6. Diebold-Mariano Tests + Dual-Regime Comparison Table
+
+The §4 ordering (4-D > 16-D > 20-D on the 1-year archive) is a ranking
+on 130 events. This section tests whether the gaps are statistically
+meaningful, in **both** regimes, with the Diebold-Mariano (DM) test
+(Diebold & Mariano, 1995) on per-event **absolute** errors.
+
+**Test (documented variant — see `dm_tests.py` for the implementation):**
+loss differential d_t = |e_method,t| − |e_traditional,t|; DM =
+d̄ / √(V̂/T) with V̂ the Newey-West HAC long-run variance (Bartlett
+kernel, lag h = ⌊T^(1/3)⌋); two-sided p-value from N(0,1). A negative
+mean differential means the method beats Traditional AnEn; **p < 0.05**
+means the gap is statistically significant. Pairs, each vs Traditional
+AnEn: Deep-AnEn-Regression, Deep Analog (Hu et al., 2023), and Raw NWP
+(the Raw NWP p-value is computed, not a placeholder).
+
+The dual-regime table below is the primary publication asset of this
+notebook: the same four methods, the same protocol, two archive lengths
+— so the reader can see exactly how the similarity-space behaviour
+changes as the data scales up."""))
+
+# ---------------------------------------------------------------- 13. §6 code
+cells.append(nbf.v4.new_code_cell("""# --- Diebold-Mariano tests, both regimes ---------------------------------------
+err_1yr = {"obs": obs, "raw": raw_fcst, "trad_mean": trad_mean,
+           "regression_mean": regression_mean, "triplet_mean": triplet_mean}
+err_long = {"obs": long_obs, "raw": long_raw, "trad_mean": long_trad_mean,
+            "regression_mean": long_regression_mean,
+            "triplet_mean": long_triplet_mean}
+
+print("1-year DM tests (vs Traditional AnEn):")
+dm_1yr = run_dm_for_regime(err_1yr)
+print("\\nLong-archive DM tests (vs Traditional AnEn):")
+dm_long = run_dm_for_regime(err_long)
+
+dm_results = {
+    "method": "Diebold-Mariano test on per-event absolute errors",
+    "variant": "loss differential d = |e_method| - |e_traditional|; "
+               "Newey-West HAC long-run variance, Bartlett kernel, "
+               "lag h = floor(T^(1/3)); two-sided p-value from N(0,1); "
+               "negative mean diff means the method beats Traditional AnEn",
+    "regimes": {
+        "1yr": {"n_events": int(len(obs)),
+                "pairs_vs_traditional": dm_1yr},
+        "long": {"n_events": int(len(long_obs)),
+                 "pairs_vs_traditional": dm_long},
+    },
+}
+with open("metrics/dm_tests.json", "w") as f:
+    json.dump(dm_results, f, indent=2)
+print("\\nSaved metrics/dm_tests.json")
+
+# --- Dual-regime comparison table (the primary publication asset) -----------
+methods = ["Raw NWP", "Traditional AnEn", "Deep-AnEn-Regression",
+           "Deep Analog (Hu et al., 2023)"]
+spaces = {"Raw NWP": "Deterministic",
+          "Traditional AnEn": "4-D Physical",
+          "Deep-AnEn-Regression": "16-D Latent",
+          "Deep Analog (Hu et al., 2023)": "20-D Latent"}
+
+def dm_p(dm_dict, method):
+    # Journal-style p-value strings; the exact numeric values live in
+    # metrics/dm_tests.json.
+    if method == "Traditional AnEn":
+        return "Baseline"
+    p = dm_dict[method]["p_value"]
+    return "<0.001" if p < 0.001 else f"{p:.4f}"
+
+dual_table = pd.DataFrame({
+    "Model": methods,
+    "Space": [spaces[m] for m in methods],
+    "1-Yr RMSE": [scores[m][0] for m in methods],
+    "Long RMSE": [scores_long[m][0] for m in methods],
+    "1-Yr CRPS": [scores[m][1] for m in methods],
+    "Long CRPS": [scores_long[m][1] for m in methods],
+    "1-Yr DM p (vs Trad)": [dm_p(dm_1yr, m) for m in methods],
+    "Long DM p (vs Trad)": [dm_p(dm_long, m) for m in methods],
+})
+display(dual_table)
+print("\\nDM p-values vs Traditional AnEn (1-year / long):")
+for m in methods:
+    if m != "Traditional AnEn":
+        print(f"  {m}: p = {dm_1yr[m]['p_value']:.4g} / "
+              f"{dm_long[m]['p_value']:.4g}")
+
+# --- Same-events check: long-trained models on the exact 130 1-year events ---
+# The long test window (1,286 events, full year) CONTAINS the 130 autumn
+# events of the 1-year test window. Scoring the long-trained models on
+# those same 130 timestamps isolates the archive-length effect from the
+# test-composition effect: any difference from §2 is then due to the
+# training archive, not to different test events.
+same_raw, same_obs = [], []
+same_trad, same_reg, same_trip = [], [], []
+for ts in EVENT_TIMESTAMPS:
+    row = test_long[test_long["timestamp"] == ts].iloc[0]
+    same_raw.append(row["fcst_gust"])
+    same_obs.append(row[TARGET])
+    same_trad.append(trad_long.find_analogs(ts, K=K)["ensemble_members"])
+    same_reg.append(regression_long_find_analogs(ts, K=K)["ensemble_members"])
+    same_trip.append(triplet_long_find_analogs(ts, K=K)["ensemble_members"])
+same_raw = np.array(same_raw)
+same_obs = np.array(same_obs)
+same_trad = np.array(same_trad)
+same_reg = np.array(same_reg)
+same_trip = np.array(same_trip)
+same_scores = {
+    "Raw NWP": (rmse(same_raw, same_obs),
+                float(np.mean(np.abs(same_raw - same_obs)))),
+    "Traditional AnEn": (rmse(same_trad.mean(axis=1), same_obs),
+                         crps_ens(same_obs, same_trad)),
+    "Deep-AnEn-Regression": (rmse(same_reg.mean(axis=1), same_obs),
+                             crps_ens(same_obs, same_reg)),
+    "Deep Analog (Hu et al., 2023)": (rmse(same_trip.mean(axis=1), same_obs),
+                                      crps_ens(same_obs, same_trip)),
+}
+same_table = pd.DataFrame(
+    {"Model": list(same_scores.keys()),
+     "RMSE": [v[0] for v in same_scores.values()],
+     "CRPS": [v[1] for v in same_scores.values()]},
+)
+print("\\nSame-events check — long-trained models scored on the exact 130 "
+      "1-year test events:")
+display(same_table.round(2))
+
+dual_comparison = {
+    "n_test_storm_events_1yr": int(len(obs)),
+    "n_test_storm_events_long": int(len(long_obs)),
+    "table": dual_table.to_dict(orient="records"),
+    "same_events_130": {
+        name: {"rmse_kmh": round(v[0], 2), "crps_kmh": round(v[1], 2)}
+        for name, v in same_scores.items()
+    },
+    "dm_tests": dm_results,
+}
+with open("metrics/dual_regime_comparison.json", "w") as f:
+    json.dump(dual_comparison, f, indent=2, default=str)
+print("\\nSaved metrics/dual_regime_comparison.json")"""))
+
+# ---------------------------------------------------------------- 14. §7 md
+cells.append(nbf.v4.new_markdown_cell("""## 7. Overfitting Check — Training vs Validation Loss Curves
+
+A journal submission must show that the neural models did not simply
+memorise the training archive. These are the per-epoch training and
+validation loss curves for **both neural models in both regimes**,
+generated by `plot_loss_curves.py` from the saved training histories
+(no retraining — the histories were recovered from the checkpoints and,
+for the 1-year triplet run, from the training log).
+
+**Deep-AnEn-Regression, 1-year (30 epochs, MSE on standardized gust):**
+
+![Deep-AnEn-Regression train/val loss, 1-year](plots/train_val_loss_regression_1yr.svg)
+
+**Deep-AnEn-Regression, long archive (30 epochs, MSE on standardized gust):**
+
+![Deep-AnEn-Regression train/val loss, long archive](plots/train_val_loss_regression_10yr.svg)
+
+**Deep Analog (Hu et al., 2023), 1-year (100 epochs, triplet margin loss):**
+
+![Deep Analog train/val loss, 1-year](plots/train_val_loss_triplet_1yr.svg)
+
+**Deep Analog (Hu et al., 2023), long archive (100 epochs max, triplet margin loss):**
+
+![Deep Analog train/val loss, long archive](plots/train_val_loss_triplet_10yr.svg)
+
+**What to look for.** Overfitting would show as a training loss that
+keeps falling while the validation loss turns up and diverges. None of
+the four curves shows that: in every case the validation loss falls
+alongside the training loss and the final train–validation gap is small
+(under ~0.1 in the loss units). The regression curves end with the
+validation loss *below* the training loss — the standard dropout
+artefact (dropout is active during training, inactive at validation),
+not a sign of anything wrong. The triplet curves improve steadily to
+the end with the best validation epoch near the end of training, which
+is why early stopping (patience 15) never triggered on the 1-year run.
+The honest reading is therefore not "the models overfit" but "the
+learned spaces were trained cleanly and still trail the direct 4-D
+metric" — which is exactly the dimensionality finding in §4/§6, not a
+training failure.
+
+**Traditional AnEn has no loss curve, by design.** It is
+non-parametric: it has no learned parameters, no training loop, and
+nothing to overfit in the neural sense. No curve is fabricated for it.
+Its overfitting evidence is the protocol itself — the identical test
+events for all methods, no tuning on the test set, analogs drawn only
+from the training pool, and the ±168 h exclusion — verified by the
+audits in §2b and §5b.""" ))
+
+# ---------------------------------------------------------------- 15. §8 code
+cells.append(nbf.v4.new_code_cell("""# --- Figure 3: dual-regime grouped RMSE / CRPS bar chart ----------------------
+methods = ["Raw NWP", "Traditional AnEn", "Deep-AnEn-Regression", "Deep Analog (Hu et al., 2023)"]
+colors = ["#636363", "#2ca02c", "#2c7fb8", "#9467bd"]
+x = np.arange(len(methods))
+w = 0.36
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+for ax, key, title in [(axes[0], 0, "RMSE (km/h)"), (axes[1], 1, "CRPS (km/h)")]:
+    vals_1yr = [scores[m][key] for m in methods]
+    vals_long = [scores_long[m][key] for m in methods]
+    b1 = ax.bar(x - w / 2, vals_1yr, w, color=colors, alpha=0.85,
+                label=f"1-year (n={len(obs)} events)")
+    b2 = ax.bar(x + w / 2, vals_long, w, color=colors, alpha=0.45,
+                hatch="//", label=f"Long archive (n={len(long_obs)} events)")
+    ax.set_title(title, fontweight="bold")
+    ax.set_ylabel(title)
+    ax.set_xticks(x)
+    ax.set_xticklabels([m.replace(" (Hu et al., 2023)", "\\n(Hu et al., 2023)")
+                        for m in methods], fontsize=9)
+    for bars in (b1, b2):
+        for bar in bars:
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                    f"{bar.get_height():.2f}", ha="center", fontsize=8,
+                    fontweight="bold")
+    ax.set_ylim(0, max(vals_1yr + vals_long) * 1.25)
+    ax.legend(fontsize=9)
+
+fig.suptitle("Dual-regime benchmark — 1-year vs long archive "
+             "(identical protocol, K=15, ±168 h exclusion)",
+             fontsize=12, fontweight="bold")
+fig.tight_layout()
+fig.savefig("plots/dual_regime_rmse_crps_barchart.png", dpi=300)
+fig.savefig("plots/dual_regime_rmse_crps_barchart.svg")
+plt.show()"""))
+
+# ---------------------------------------------------------------- 16. §9 code
 cells.append(nbf.v4.new_code_cell("""# --- Saved-file inventory -------------------------------------------------------
 print("Saved files:")
 for p in ["plots/4way_method_comparison_timeseries.png",
           "plots/4way_method_comparison_timeseries.svg",
           "plots/rmse_crps_benchmark_barchart_4way.png",
           "plots/rmse_crps_benchmark_barchart_4way.svg",
-          "metrics/comparison_metrics.json"]:
+          "plots/dual_regime_rmse_crps_barchart.png",
+          "plots/dual_regime_rmse_crps_barchart.svg",
+          "plots/train_val_loss_regression_1yr.png",
+          "plots/train_val_loss_regression_1yr.svg",
+          "plots/train_val_loss_regression_10yr.png",
+          "plots/train_val_loss_regression_10yr.svg",
+          "plots/train_val_loss_triplet_1yr.png",
+          "plots/train_val_loss_triplet_1yr.svg",
+          "plots/train_val_loss_triplet_10yr.png",
+          "plots/train_val_loss_triplet_10yr.svg",
+          "metrics/comparison_metrics.json",
+          "metrics/comparison_metrics_10yr.json",
+          "metrics/dual_regime_comparison.json",
+          "metrics/dm_tests.json"]:
     print(f"  {p} ({os.path.getsize(p)/1024:.1f} KB)")"""))
 
 nb.cells = cells

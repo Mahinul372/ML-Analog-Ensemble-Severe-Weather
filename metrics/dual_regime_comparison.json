@@ -1,0 +1,128 @@
+{
+  "n_test_storm_events_1yr": 130,
+  "n_test_storm_events_long": 1286,
+  "table": [
+    {
+      "Model": "Raw NWP",
+      "Space": "Deterministic",
+      "1-Yr RMSE": 13.228412653806506,
+      "Long RMSE": 12.785863245950951,
+      "1-Yr CRPS": 11.417538303846154,
+      "Long CRPS": 10.87026417052877,
+      "1-Yr DM p (vs Trad)": "<0.001",
+      "Long DM p (vs Trad)": "<0.001"
+    },
+    {
+      "Model": "Traditional AnEn",
+      "Space": "4-D Physical",
+      "1-Yr RMSE": 7.425640521077822,
+      "Long RMSE": 7.626268395839732,
+      "1-Yr CRPS": 4.148196868991453,
+      "Long CRPS": 4.359390264862277,
+      "1-Yr DM p (vs Trad)": "Baseline",
+      "Long DM p (vs Trad)": "Baseline"
+    },
+    {
+      "Model": "Deep-AnEn-Regression",
+      "Space": "16-D Latent",
+      "1-Yr RMSE": 7.863085432749008,
+      "Long RMSE": 7.6748724384243445,
+      "1-Yr CRPS": 4.445636832717949,
+      "Long CRPS": 4.412712799865907,
+      "1-Yr DM p (vs Trad)": "0.0351",
+      "Long DM p (vs Trad)": "0.2274"
+    },
+    {
+      "Model": "Deep Analog (Hu et al., 2023)",
+      "Space": "20-D Latent",
+      "1-Yr RMSE": 8.352515177009156,
+      "Long RMSE": 9.389108726133271,
+      "1-Yr CRPS": 5.1500184342905975,
+      "Long CRPS": 5.457897247613962,
+      "1-Yr DM p (vs Trad)": "0.0293",
+      "Long DM p (vs Trad)": "<0.001"
+    }
+  ],
+  "same_events_130": {
+    "Raw NWP": {
+      "rmse_kmh": 13.23,
+      "crps_kmh": 11.42
+    },
+    "Traditional AnEn": {
+      "rmse_kmh": 7.02,
+      "crps_kmh": 3.86
+    },
+    "Deep-AnEn-Regression": {
+      "rmse_kmh": 7.1,
+      "crps_kmh": 3.97
+    },
+    "Deep Analog (Hu et al., 2023)": {
+      "rmse_kmh": 8.31,
+      "crps_kmh": 4.91
+    }
+  },
+  "dm_tests": {
+    "method": "Diebold-Mariano test on per-event absolute errors",
+    "variant": "loss differential d = |e_method| - |e_traditional|; Newey-West HAC long-run variance, Bartlett kernel, lag h = floor(T^(1/3)); two-sided p-value from N(0,1); negative mean diff means the method beats Traditional AnEn",
+    "regimes": {
+      "1yr": {
+        "n_events": 130,
+        "pairs_vs_traditional": {
+          "Raw NWP": {
+            "dm_statistic": 6.202254221349954,
+            "p_value": 5.566007654778105e-10,
+            "mean_diff": 5.979692221282051,
+            "n": 130,
+            "lag_h": 5,
+            "var_hat": 120.83754347693937
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": 2.1074723543295892,
+            "p_value": 0.03507665560294937,
+            "mean_diff": 0.4890461153846147,
+            "n": 130,
+            "lag_h": 5,
+            "var_hat": 7.000341176895604
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": 2.1799872113646344,
+            "p_value": 0.029258409533282403,
+            "mean_diff": 1.3325537666666658,
+            "n": 130,
+            "lag_h": 5,
+            "var_hat": 48.57412018079162
+          }
+        }
+      },
+      "long": {
+        "n_events": 1286,
+        "pairs_vs_traditional": {
+          "Raw NWP": {
+            "dm_statistic": 15.54263588356408,
+            "p_value": 0.0,
+            "mean_diff": 4.952491341161224,
+            "n": 1286,
+            "lag_h": 10,
+            "var_hat": 130.5686977190101
+          },
+          "Deep-AnEn-Regression": {
+            "dm_statistic": 1.2070475872297628,
+            "p_value": 0.22741381798961702,
+            "mean_diff": 0.06158628607050298,
+            "n": 1286,
+            "lag_h": 10,
+            "var_hat": 3.347805465114502
+          },
+          "Deep Analog (Hu et al., 2023)": {
+            "dm_statistic": 4.494270411563335,
+            "p_value": 6.980887396368374e-06,
+            "mean_diff": 1.3418911093105241,
+            "n": 1286,
+            "lag_h": 10,
+            "var_hat": 114.6455284530351
+          }
+        }
+      }
+    }
+  }
+}

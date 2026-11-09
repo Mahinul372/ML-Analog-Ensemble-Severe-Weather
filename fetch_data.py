@@ -1,8 +1,8 @@
 """
-fetch_data.py — Phase 1 data pipeline.
+fetch_data.py — Phase 1 data pipeline (+ long-archive mode).
 
-Fetches hourly data for Atlanta, GA (33.64, -84.42) spanning the past
-365 days from two Open-Meteo sources:
+Fetches hourly data for Atlanta, GA (33.64, -84.42) from two Open-Meteo
+sources:
 
 * Historical *forecasts*  : Open-Meteo Previous-Runs API
   (https://previous-runs-api.open-meteo.com/v1/forecast) — the archived
@@ -12,18 +12,42 @@ Fetches hourly data for Atlanta, GA (33.64, -84.42) spanning the past
   at each hour.
 
 Both series are aligned on matching hourly UTC timestamps into a single
-clean DataFrame and saved to ``data/atlanta_weather_archive.csv`` with
-columns::
+clean DataFrame with columns::
 
     timestamp, fcst_temp, fcst_wind, fcst_gust, fcst_press,
     obs_temp, obs_wind, obs_gust, obs_press
 
 Units: temperature °C, wind/gust km/h, surface pressure hPa.
+
+Modes
+-----
+Default (no arguments): the Phase 1 one-year archive — the past 365 days
+ending 7 days ago, single request per API, saved to
+``data/atlanta_weather_archive.csv``. This reproduces the 1-year file
+exactly; nothing about the 1-year pipeline changed.
+
+Long-archive mode (``--long-archive``): 2018-01-01 → 2026-11-01,
+fetched in one-year chunks with a 2 s pause between chunks (to respect
+Open-Meteo rate limits), saved to ``data/atlanta_weather_archive_10yr.csv``.
+The start date is NOT arbitrary: the Previous-Runs API returns all-NaN
+forecasts before 2018-01-01 00:00 UTC (verified by probe, see
+/tmp/probe_10yr_findings.md), so 2018-01-01 is the earliest date with
+valid forecast data. The file keeps the ``_10yr`` name because it is the
+long-archive counterpart of the 1-year file; its span is ~8.8 years
+(77,448 hourly rows).
+
+Usage:
+    python fetch_data.py                  # 1-year archive (default)
+    python fetch_data.py --long-archive   # long archive (2018-01-01 -> 2026-11-01)
+    python fetch_data.py --start 2018-01-01 --end 2026-11-01 \\
+        --output data/atlanta_weather_archive_10yr.csv --chunk-years
 """
 
 from __future__ import annotations
 
+import argparse
 import os
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -50,13 +74,20 @@ HOURLY_VARIABLES = [
 ]
 
 # ERA5 reanalysis in the Archive API lags real time by ~5 days, so the
-# window ends 7 days ago to guarantee complete coverage.
+# 1-year window ends 7 days ago to guarantee complete coverage.
 N_DAYS = 365
 END_DATE = date.today() - timedelta(days=7)
 START_DATE = END_DATE - timedelta(days=N_DAYS - 1)
 
+# Long-archive mode: earliest date with valid Previous-Runs forecasts
+# (verified by probe 2026-11-09: all-NaN before 2018-01-01 00:00 UTC).
+LONG_START_DATE = date(2018, 1, 1)
+LONG_END_DATE = date(2026, 11, 1)
+CHUNK_SLEEP_SECONDS = 2
+
 DATA_DIR = Path(__file__).resolve().parent / "data"
 OUTPUT_PATH = DATA_DIR / "atlanta_weather_archive.csv"
+LONG_OUTPUT_PATH = DATA_DIR / "atlanta_weather_archive_10yr.csv"
 
 # Explicit output column names: fcst_* = NWP forecast, obs_* = observation.
 COLUMN_MAP = {
@@ -75,14 +106,15 @@ OUTPUT_COLUMNS = [
 # ---------------------------------------------------------------------------
 # Open-Meteo client
 # ---------------------------------------------------------------------------
-def _build_client() -> openmeteo_requests.Client:
+def _build_client(cache_name=".openmeteo_cache") -> openmeteo_requests.Client:
     """Cached, retrying HTTP session wrapped by the Open-Meteo client."""
-    cache_session = requests_cache.CachedSession(".openmeteo_cache", expire_after=-1)
+    cache_session = requests_cache.CachedSession(cache_name, expire_after=-1)
     retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
     return openmeteo_requests.Client(session=retry_session)
 
 
-def _fetch_hourly(client: openmeteo_requests.Client, url: str) -> pd.DataFrame:
+def _fetch_hourly(client: openmeteo_requests.Client, url: str,
+                  start_date: date, end_date: date) -> pd.DataFrame:
     """Fetch one hourly series from an Open-Meteo endpoint.
 
     Returns a DataFrame indexed by UTC timestamp with one column per
@@ -91,8 +123,8 @@ def _fetch_hourly(client: openmeteo_requests.Client, url: str) -> pd.DataFrame:
     params = {
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
-        "start_date": START_DATE.isoformat(),
-        "end_date": END_DATE.isoformat(),
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
         "hourly": HOURLY_VARIABLES,
         "timezone": "UTC",
     }
@@ -114,31 +146,47 @@ def _fetch_hourly(client: openmeteo_requests.Client, url: str) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-# ---------------------------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------------------------
-def build_archive() -> pd.DataFrame:
-    """Fetch, align, clean and return the forecast/observation archive."""
-    client = _build_client()
-
-    print(f"[{LOCATION_NAME}] Fetching NWP forecasts "
-          f"({START_DATE} → {END_DATE}) ...")
-    fcst = _fetch_hourly(client, FORECAST_URL)
-
-    print(f"[{LOCATION_NAME}] Fetching ERA5 observations "
-          f"({START_DATE} → {END_DATE}) ...")
-    obs = _fetch_hourly(client, OBSERVATION_URL)
-
-    # --- Align on matching hourly timestamps (inner join) ------------------
+def _fetch_window(client, start_date, end_date):
+    """Fetch + align one date window from both APIs (single request each)."""
+    fcst = _fetch_hourly(client, FORECAST_URL, start_date, end_date)
+    obs = _fetch_hourly(client, OBSERVATION_URL, start_date, end_date)
     merged = fcst.merge(obs, on="timestamp", suffixes=("_fcst", "_obs"))
-    print(f"Aligned rows before cleaning: {len(merged)}")
-
-    # --- Rename to explicit fcst_*/obs_* columns ---------------------------
     rename = {"timestamp": "timestamp"}
     for variable, (fcst_col, obs_col) in COLUMN_MAP.items():
         rename[f"{variable}_fcst"] = fcst_col
         rename[f"{variable}_obs"] = obs_col
-    df = merged.rename(columns=rename)[OUTPUT_COLUMNS]
+    return merged.rename(columns=rename)[OUTPUT_COLUMNS]
+
+
+# ---------------------------------------------------------------------------
+# Pipeline
+# ---------------------------------------------------------------------------
+def build_archive(start_date=START_DATE, end_date=END_DATE,
+                  chunk_years=False, cache_name=".openmeteo_cache") -> pd.DataFrame:
+    """Fetch, align, clean and return the forecast/observation archive.
+
+    With chunk_years=True the window is fetched one calendar year at a
+    time with a CHUNK_SLEEP_SECONDS pause between year requests.
+    """
+    client = _build_client(cache_name)
+
+    if not chunk_years:
+        print(f"[{LOCATION_NAME}] Fetching ({start_date} → {end_date}) ...")
+        df = _fetch_window(client, start_date, end_date)
+    else:
+        chunks = []
+        year = start_date.year
+        while year <= end_date.year:
+            chunk_start = max(start_date, date(year, 1, 1))
+            chunk_end = min(end_date, date(year, 12, 31))
+            print(f"[{LOCATION_NAME}] Fetching year {year} "
+                  f"({chunk_start} → {chunk_end}) ...")
+            chunks.append(_fetch_window(client, chunk_start, chunk_end))
+            if year < end_date.year:
+                time.sleep(CHUNK_SLEEP_SECONDS)
+            year += 1
+        df = pd.concat(chunks, ignore_index=True)
+        print(f"Fetched {len(chunks)} year chunks, {len(df)} rows before cleaning")
 
     # --- Clean: interpolate minor gaps, then drop any remaining NaNs --------
     n_before = len(df)
@@ -152,14 +200,59 @@ def build_archive() -> pd.DataFrame:
     return df
 
 
+def verify_archive(df, expected_rows=None):
+    """Check the archive is hourly-complete with no internal date gaps."""
+    diffs = df["timestamp"].diff().dropna()
+    n_gaps = int((diffs != pd.Timedelta(hours=1)).sum())
+    print(f"Rows: {len(df)} | span: {df['timestamp'].min()} → {df['timestamp'].max()}")
+    print(f"Missing values: {int(df.isna().sum().sum())} | "
+          f"non-hourly gaps: {n_gaps}")
+    if expected_rows is not None:
+        assert len(df) == expected_rows, \
+            f"expected {expected_rows} rows, got {len(df)}"
+    assert n_gaps == 0, f"{n_gaps} internal date gaps found"
+    assert not df.isna().any().any(), "NaN values remain in the archive"
+    print("Verification passed: hourly-complete, no gaps, no NaNs.")
+
+
 def main() -> Path:
+    parser = argparse.ArgumentParser(description="Fetch Atlanta weather archive")
+    parser.add_argument("--long-archive", action="store_true",
+                        help="fetch 2018-01-01 -> 2026-11-01 in year chunks "
+                             "to data/atlanta_weather_archive_10yr.csv")
+    parser.add_argument("--start", type=str, default=None,
+                        help="start date YYYY-MM-DD (default: 1-year mode)")
+    parser.add_argument("--end", type=str, default=None,
+                        help="end date YYYY-MM-DD (default: 1-year mode)")
+    parser.add_argument("--output", type=str, default=None,
+                        help="output CSV path (default: data/atlanta_weather_archive.csv)")
+    parser.add_argument("--chunk-years", action="store_true",
+                        help="fetch one calendar year at a time (2 s pause between years)")
+    args = parser.parse_args()
+
+    if args.long_archive:
+        start_date, end_date = LONG_START_DATE, LONG_END_DATE
+        output_path = LONG_OUTPUT_PATH
+        chunk_years = True
+        cache_name = ".openmeteo_cache_10yr"
+        expected_rows = 77448
+    else:
+        start_date = date.fromisoformat(args.start) if args.start else START_DATE
+        end_date = date.fromisoformat(args.end) if args.end else END_DATE
+        output_path = Path(args.output) if args.output else OUTPUT_PATH
+        chunk_years = args.chunk_years
+        cache_name = ".openmeteo_cache"
+        expected_rows = None
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    df = build_archive()
-    df.to_csv(OUTPUT_PATH, index=False)
-    print(f"Saved archive to {OUTPUT_PATH}")
+    df = build_archive(start_date, end_date, chunk_years=chunk_years,
+                       cache_name=cache_name)
+    verify_archive(df, expected_rows=expected_rows)
+    df.to_csv(output_path, index=False)
+    print(f"Saved archive to {output_path}")
     print(df.head())
     print(df.describe().round(2))
-    return OUTPUT_PATH
+    return output_path
 
 
 if __name__ == "__main__":

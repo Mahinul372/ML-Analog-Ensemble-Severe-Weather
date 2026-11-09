@@ -18,8 +18,12 @@ Scoring convention (consistent across all three methods):
     exact equivalent of single-member ensemble CRPS.
 
 Usage:
-    python traditional_anen.py            # evaluate + save metrics JSON
+    python traditional_anen.py            # evaluate + save metrics JSON (1-year)
     python traditional_anen.py --demo     # also print one worked example
+    python traditional_anen.py --archive data/atlanta_weather_archive_10yr.csv \
+        --metrics-out metrics/traditional_anen_metrics_10yr.json \
+        --errors-out metrics/long_traditional_errors.npz
+        # long-archive run: splits branch by filename (see data_prep)
 """
 
 import argparse
@@ -40,6 +44,7 @@ from data_prep import (
     fit_feature_scaler,
     get_storm_events,
     load_archive,
+    regime_for_path,
     split_archive,
 )
 
@@ -51,6 +56,7 @@ class TraditionalAnalogEnsemble:
     df: pd.DataFrame
     k: int = K
     exclusion_hours: int = EXCLUSION_HOURS
+    regime: str = "1yr"
     train_df: pd.DataFrame = field(init=False)
     val_df: pd.DataFrame = field(init=False)
     test_df: pd.DataFrame = field(init=False)
@@ -60,7 +66,7 @@ class TraditionalAnalogEnsemble:
     def __post_init__(self):
         df = self.df.sort_values("timestamp").reset_index(drop=True)
         self.df = df
-        self.train_df, self.val_df, self.test_df = split_archive(df)
+        self.train_df, self.val_df, self.test_df = split_archive(df, regime=self.regime)
         # Scaler fitted on the training split only (see data_prep).
         self.scaler = fit_feature_scaler(self.train_df)
         self.train_scaled = self.scaler.transform(self.train_df[FEATURES])
@@ -106,12 +112,14 @@ class TraditionalAnalogEnsemble:
             "p90": float(np.percentile(members, 90)),
         }
 
-    def evaluate(self, threshold=STORM_THRESHOLD):
+    def evaluate(self, threshold=STORM_THRESHOLD, save_arrays=None):
         """Evaluate Raw NWP vs. Traditional AnEn on the shared storm events.
 
         The event list comes from data_prep.get_storm_events — the exact
-        same 130 timestamps used by the Deep-AnEn-Regression evaluation. Returns
-        (results_df, metrics_dict).
+        same timestamps used by the Deep-AnEn-Regression evaluation for
+        the same regime. Returns (results_df, metrics_dict). When
+        save_arrays is given, per-event raw forecasts, observations and
+        ensemble members are saved as .npz (for DM tests / notebook use).
         """
         storms = get_storm_events(self.test_df, threshold)
         raw_fcst, obs, anen_mean, anen_members = [], [], [], []
@@ -143,6 +151,8 @@ class TraditionalAnalogEnsemble:
             }
         )
         metrics = {
+            "regime": self.regime,
+            "n_train_rows": int(len(self.train_df)),
             "n_test_storm_events": int(len(storms)),
             "rmse_raw_nwp_kmh": round(rmse_raw, 2),
             "rmse_traditional_anen_kmh": round(rmse_anen, 2),
@@ -151,6 +161,11 @@ class TraditionalAnalogEnsemble:
             "crps_traditional_anen_kmh": round(crps_anen, 2),
             "crps_skill_pct": round(100 * (crps_raw - crps_anen) / crps_raw, 1),
         }
+        if save_arrays is not None:
+            np.savez(save_arrays,
+                     timestamps=np.array([str(t) for t in storms["timestamp"]]),
+                     raw_fcst=raw_fcst, obs=obs, members=anen_members)
+            print(f"Saved per-event arrays to {save_arrays}")
         return results, metrics
 
 
@@ -158,11 +173,23 @@ def main():
     parser = argparse.ArgumentParser(description="Traditional AnEn benchmark")
     parser.add_argument("--demo", action="store_true",
                         help="print one worked analog example")
+    parser.add_argument("--archive", type=str, default=None,
+                        help="archive CSV (default: 1-year file; regime "
+                             "branches by filename)")
+    parser.add_argument("--metrics-out", type=str, default=None,
+                        help="metrics JSON path (default: "
+                             "metrics/traditional_anen_metrics.json)")
+    parser.add_argument("--errors-out", type=str, default=None,
+                        help="optional .npz path for per-event arrays")
     args = parser.parse_args()
 
     here = os.path.dirname(os.path.abspath(__file__))
-    df = load_archive()
-    engine = TraditionalAnalogEnsemble(df)
+    archive_path = args.archive or os.path.join(here, "data",
+                                                "atlanta_weather_archive.csv")
+    regime = regime_for_path(archive_path)
+    df = load_archive(archive_path)
+    engine = TraditionalAnalogEnsemble(df, regime=regime)
+    print(f"Archive: {archive_path} | regime: {regime}")
     print(f"Train: {len(engine.train_df)} | Val: {len(engine.val_df)} "
           f"| Test window: {len(engine.test_df)} rows")
 
@@ -177,12 +204,13 @@ def main():
         print("Closest analogs:",
               [a["timestamp"][:16] for a in demo["analogs"][:5]])
 
-    results, metrics = engine.evaluate()
+    results, metrics = engine.evaluate(save_arrays=args.errors_out)
     print("\n" + results.to_string(index=False))
     print(f"\nRMSE skill: {metrics['rmse_skill_pct']:+.1f}% | "
           f"CRPS skill: {metrics['crps_skill_pct']:+.1f}%")
 
-    out_path = os.path.join(here, "metrics", "traditional_anen_metrics.json")
+    out_path = args.metrics_out or os.path.join(here, "metrics",
+                                                "traditional_anen_metrics.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=2)

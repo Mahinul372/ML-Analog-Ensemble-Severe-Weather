@@ -10,12 +10,26 @@ Rules enforced here:
   * The feature scaler is fitted on the TRAINING split only. No validation
     or test information enters the scaler.
   * Splits are strictly chronological (no shuffling).
-  * The evaluation subset is defined ONCE: the 130 test-window timestamps
-    with observed gust >= 35 km/h. All methods evaluate on those exact
-    timestamps.
+  * The evaluation subset is defined ONCE per regime: the test-window
+    timestamps with observed gust >= 35 km/h. All methods evaluate on
+    those exact timestamps.
   * The plotted severe episode is selected by a PREDEFINED rule (the
     contiguous run of storm hours with the highest observed peak gust),
     not by visual inspection of which event flatters a model.
+
+Two regimes share this protocol, branched by which CSV file is passed
+(see regime_for_path):
+  * "1yr"  — data/atlanta_weather_archive.csv (2025-11-02 → 2026-11-01):
+    train ≤ 2026-08-15 (6,888 rows), val → 2026-08-31 (384), test
+    ≥ 2026-09-01 (1,488 rows, 130 storm events).
+  * "long" — data/atlanta_weather_archive_10yr.csv (2018-01-01 →
+    2026-11-01, 77,448 rows): train 2018-01-01 → 2024-11-01 (59,928
+    rows), val 2024-11-02 → 2025-11-01 (8,760), test 2025-11-02 →
+    2026-11-01 (8,760 rows). The archive starts 2018-01-01 because the
+    Open-Meteo Previous-Runs API returns no valid forecasts earlier
+    (verified by probe 2026-11-09). The test window is IDENTICAL in
+    calendar terms to the 1-year file's full span, but the training pool
+    is ~8.7x larger — that is the scale-up comparison.
 """
 
 import os
@@ -30,9 +44,31 @@ TARGET = "obs_gust"
 TRAIN_END = pd.Timestamp("2026-08-15 23:00", tz="UTC")
 VAL_END = pd.Timestamp("2026-08-31 23:00", tz="UTC")
 
+# Long-archive splits (UTC): train 2018-01-01 -> 2024-11-01 (59,928 rows),
+# val 2024-11-02 -> 2025-11-01 (8,760), test 2025-11-02 -> 2026-11-01 (8,760).
+LONG_TRAIN_END = pd.Timestamp("2024-11-01 23:00", tz="UTC")
+LONG_VAL_END = pd.Timestamp("2025-11-01 23:00", tz="UTC")
+
+# Regime split boundaries, keyed by regime name.
+SPLIT_BOUNDARIES = {
+    "1yr": (TRAIN_END, VAL_END),
+    "long": (LONG_TRAIN_END, LONG_VAL_END),
+}
+
 EXCLUSION_HOURS = 7 * 24  # +/-7-day window around each target timestamp
 K = 15                    # ensemble size for both AnEn variants
 STORM_THRESHOLD = 35.0    # km/h; defines the test storm-event subset
+
+
+def regime_for_path(path):
+    """Which split regime a CSV file belongs to, by filename.
+
+    Files with "10yr" in the name use the long-archive splits; everything
+    else uses the 1-year splits. The 1-year file is the default, so any
+    caller that never passes a path keeps the original behaviour.
+    """
+    name = os.path.basename(str(path)) if path is not None else ""
+    return "long" if "10yr" in name else "1yr"
 
 
 def load_archive(path=None):
@@ -44,14 +80,34 @@ def load_archive(path=None):
     return df.sort_values("timestamp").reset_index(drop=True)
 
 
-def split_archive(df):
-    """Chronological train / validation / test splits (no shuffling)."""
-    train_df = df[df["timestamp"] <= TRAIN_END].reset_index(drop=True)
+def split_archive(df, regime="1yr"):
+    """Chronological train / validation / test splits (no shuffling).
+
+    regime="1yr" (default) keeps the Phase 2/3/4 splits exactly;
+    regime="long" uses the long-archive hard chronological barrier.
+    """
+    if regime not in SPLIT_BOUNDARIES:
+        raise ValueError(f"unknown regime {regime!r} (expected '1yr' or 'long')")
+    train_end, val_end = SPLIT_BOUNDARIES[regime]
+    train_df = df[df["timestamp"] <= train_end].reset_index(drop=True)
     val_df = df[
-        (df["timestamp"] > TRAIN_END) & (df["timestamp"] <= VAL_END)
+        (df["timestamp"] > train_end) & (df["timestamp"] <= val_end)
     ].reset_index(drop=True)
-    test_df = df[df["timestamp"] > VAL_END].reset_index(drop=True)
+    test_df = df[df["timestamp"] > val_end].reset_index(drop=True)
     return train_df, val_df, test_df
+
+
+def load_and_split(path=None, regime=None):
+    """Load an archive and split it under the regime for that file.
+
+    The regime is detected from the filename unless given explicitly.
+    Returns (df, train_df, val_df, test_df, regime).
+    """
+    df = load_archive(path)
+    if regime is None:
+        regime = regime_for_path(path)
+    train_df, val_df, test_df = split_archive(df, regime=regime)
+    return df, train_df, val_df, test_df, regime
 
 
 def fit_feature_scaler(train_df):

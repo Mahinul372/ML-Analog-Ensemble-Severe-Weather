@@ -94,11 +94,9 @@ from data_prep import (
     K,
     STORM_THRESHOLD,
     TARGET,
-    TRAIN_END,
     fit_feature_scaler,
     get_storm_events,
-    load_archive,
-    split_archive,
+    load_and_split,
 )
 
 # ---------------------------------------------------------------------------
@@ -259,15 +257,21 @@ def sample_triplets(anchor_pos, candidate_pos, obs, timestamps, rng,
 def train_triplet_model(store, train_pos, val_pos, obs, timestamps,
                         device, max_epochs=MAX_EPOCHS,
                         anchors_per_epoch=ANCHORS_PER_EPOCH, seed=SEED,
-                        verbose=True, ckpt_path=None, scaler=None):
+                        verbose=True, ckpt_path=None, scaler=None,
+                        val_anchors_max=500):
     """Train DeepAnalogLSTM with RA triplets; early stopping on val loss.
 
     Validation triplets are built ONCE (fixed seed) from validation
     anchors with candidates from the TRAINING pool — mirroring retrieval,
-    where test targets also search the training archive. Returns
-    (best_model, history dict). When ckpt_path is given, the best model
-    so far is saved to disk on EVERY improvement, so a killed run can
-    still be evaluated from its best checkpoint.
+    where test targets also search the training archive. At most
+    val_anchors_max validation anchors are used (the 1-year regime has
+    361, so this changes nothing there; the long regime has ~8,737, and
+    capping at 500 anchors / 7,500 triplets keeps per-epoch validation
+    time comparable to Phase 4's 5,415-triplet set while the mean loss
+    stays stable). Returns (best_model, history dict). When ckpt_path
+    is given, the best model so far is saved to disk on EVERY
+    improvement, so a killed run can still be evaluated from its best
+    checkpoint.
     """
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -281,7 +285,11 @@ def train_triplet_model(store, train_pos, val_pos, obs, timestamps,
 
     # Fixed validation triplet set (stable early-stopping signal).
     val_rng = np.random.default_rng(123)
-    val_triplets = sample_triplets(val_pos, train_pos, obs, timestamps, val_rng)
+    if len(val_pos) > val_anchors_max:
+        val_anchors = val_rng.choice(val_pos, size=val_anchors_max, replace=False)
+    else:
+        val_anchors = val_pos
+    val_triplets = sample_triplets(val_anchors, train_pos, obs, timestamps, val_rng)
     if verbose:
         print(f"Validation triplets (fixed): {len(val_triplets)}")
 
@@ -396,15 +404,23 @@ def retrieve_analogs(model, store, train_pos, target_timestamps, device, k=K,
     return np.array(members), np.array(analog_pos), np.array(dists_out)
 
 
-def evaluate_phase4(model, store, train_pos, test_df, device):
-    """Evaluate on the shared 130 storm events with strict assertions."""
+def evaluate_phase4(model, store, train_pos, test_df, device,
+                    n_events_expected=None):
+    """Evaluate on the shared storm events with strict assertions.
+
+    n_events_expected is asserted only when given (130 for the 1-year
+    regime); otherwise the actual event count is used. Returns
+    (metrics_dict, members, raw_fcst, obs).
+    """
     storms = get_storm_events(test_df)
     event_ts = list(storms["timestamp"])
     # Strict test protocol (assertions from the task spec).
-    assert len(event_ts) == 130, f"expected 130 events, got {len(event_ts)}"
-    assert len(set(event_ts)) == 130, "event timestamps are not unique"
+    if n_events_expected is not None:
+        assert len(event_ts) == n_events_expected, \
+            f"expected {n_events_expected} events, got {len(event_ts)}"
+    assert len(set(event_ts)) == len(event_ts), "event timestamps are not unique"
     members, analog_pos, _ = retrieve_analogs(model, store, train_pos, event_ts, device)
-    assert members.shape == (130, K), f"bad ensemble shape {members.shape}"
+    assert members.shape == (len(event_ts), K), f"bad ensemble shape {members.shape}"
     obs = storms[TARGET].to_numpy(dtype=float)
     raw = storms["fcst_gust"].to_numpy(dtype=float)
     # No analog within +/-168 h; no analog outside the training archive.
@@ -429,8 +445,8 @@ def evaluate_phase4(model, store, train_pos, test_df, device):
         "crps_raw_nwp_kmh": round(crps_raw, 2),
         "crps_triplet_kmh": round(crps_triplet, 2),
         "crps_skill_pct": round(100 * (crps_raw - crps_triplet) / crps_raw, 1),
-        "n_test_storm_events": 130,
-    }, members
+        "n_test_storm_events": len(event_ts),
+    }, members, raw, obs
 
 
 # ---------------------------------------------------------------------------
@@ -469,19 +485,42 @@ def main():
     parser = argparse.ArgumentParser(description="Phase 4: Hu et al. Deep Analog")
     parser.add_argument("--epochs", type=int, default=MAX_EPOCHS)
     parser.add_argument("--anchors-per-epoch", type=int, default=ANCHORS_PER_EPOCH)
+    parser.add_argument("--val-anchors-max", type=int, default=500,
+                        help="max validation anchors for the fixed val "
+                             "triplet set (default 500 -> 7,500 triplets)")
     parser.add_argument("--skip-train", action="store_true",
                         help="load the saved checkpoint and evaluate only")
+    parser.add_argument("--archive", type=str, default=None,
+                        help="archive CSV (default: 1-year file; regime "
+                             "branches by filename)")
+    parser.add_argument("--ckpt-out", type=str, default=None,
+                        help="checkpoint .pth path (default: "
+                             "models/deep_anen_triplet_weights.pth)")
+    parser.add_argument("--weights-json-out", type=str, default=None,
+                        help="text-safe weights JSON path")
+    parser.add_argument("--metrics-out", type=str, default=None,
+                        help="metrics JSON path (default: "
+                             "metrics/deep_anen_triplet_metrics.json)")
+    parser.add_argument("--errors-out", type=str, default=None,
+                        help="optional .npz path for per-event arrays")
     args = parser.parse_args()
 
     here = os.path.dirname(os.path.abspath(__file__))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"PyTorch {torch.__version__} | device: {device}")
 
-    df = load_archive()
-    train_df, val_df, test_df = split_archive(df)
+    archive_path = args.archive or os.path.join(here, "data",
+                                                "atlanta_weather_archive.csv")
+    df, train_df, val_df, test_df, regime = load_and_split(archive_path)
     # Verify split dimensions against data_prep outputs (not hardcoded).
+    print(f"Archive: {archive_path} | regime: {regime}")
     print(f"Train: {len(train_df)} | Val: {len(val_df)} | Test: {len(test_df)}")
-    assert len(train_df) == 6888 and len(val_df) == 384 and len(test_df) == 1488
+    if regime == "1yr":
+        assert len(train_df) == 6888 and len(val_df) == 384 and len(test_df) == 1488
+        n_events_expected = 130
+    else:
+        assert len(train_df) == 59928 and len(val_df) == 8760 and len(test_df) == 8760
+        n_events_expected = None
 
     scaler = fit_feature_scaler(train_df)
     store = SequenceStore(df, scaler)
@@ -492,7 +531,10 @@ def main():
     obs = df[TARGET].to_numpy(dtype=float)
     timestamps = df["timestamp"].to_numpy(dtype="datetime64[ns]")
 
-    ckpt_path = os.path.join(here, "models", "deep_anen_triplet_weights.pth")
+    ckpt_path = args.ckpt_out or os.path.join(here, "models",
+                                              "deep_anen_triplet_weights.pth")
+    weights_json_path = args.weights_json_out or os.path.join(
+        here, "models", "deep_anen_triplet_weights.json")
     os.makedirs(os.path.join(here, "models"), exist_ok=True)
 
     if args.skip_train:
@@ -503,24 +545,29 @@ def main():
         model, history = train_triplet_model(
             store, train_pos, val_pos, obs, timestamps, device,
             max_epochs=args.epochs, anchors_per_epoch=args.anchors_per_epoch,
-            ckpt_path=ckpt_path, scaler=scaler)
+            ckpt_path=ckpt_path, scaler=scaler,
+            val_anchors_max=args.val_anchors_max)
         save_checkpoint(model, history, ckpt_path, scaler)
         # Text-safe copy of the weights (GitHub connector is text-only).
         weights_json = {k: v.cpu().tolist()
                         for k, v in model.state_dict().items()}
-        with open(os.path.join(here, "models", "deep_anen_triplet_weights.json"), "w") as f:
+        with open(weights_json_path, "w") as f:
             json.dump({"config": {"input_features": 4, "hidden_features": HIDDEN,
                                   "hidden_layers": LAYERS, "output_features": EMBED_DIM,
                                   "dropout": DROPOUT, "seq_len": SEQ_LEN},
                        "state_dict": weights_json}, f)
         print(f"Saved {ckpt_path}")
 
-    metrics, _ = evaluate_phase4(model, store, train_pos, test_df, device)
+    metrics, members, raw, obs_ev = evaluate_phase4(
+        model, store, train_pos, test_df, device,
+        n_events_expected=n_events_expected)
     metrics_full = {
         "model": "Deep Analog (Hu et al., 2023) — LSTM triplet embedding",
         "paper": PAPER,
         "paper_repo": PAPER_REPO,
         "method_note": "LSTM (3 layers, 20 hidden, dropout 0.01) + linear layer to 20-D embeddings; TripletMarginLoss margin 0.9 (official default); Reverse Analog fitness-proportionate sampling; 24 h lookback sequences (adaptation: paper uses lead-time windows). No L2 normalization (verified in official code). No regression head.",
+        "regime": regime,
+        "n_train_rows": int(len(train_df)),
         "rmse_kmh": metrics["rmse_triplet_kmh"],
         "crps_kmh": metrics["crps_triplet_kmh"],
         "rmse_raw_nwp_kmh": metrics["rmse_raw_nwp_kmh"],
@@ -540,6 +587,7 @@ def main():
             "best_val_loss": round(history["best_val_loss"], 4),
             "early_stopped": history["early_stopped"],
             "anchors_per_epoch": args.anchors_per_epoch,
+            "val_anchors_max": args.val_anchors_max,
             "num_analogs_positive_group": NUM_ANALOGS,
             "fitness_num_negative": FITNESS_NUM_NEGATIVE,
             "train_loss_final": round(history["train_loss"][-1], 4),
@@ -547,10 +595,18 @@ def main():
         },
         "random_seed": SEED,
     }
-    out_path = os.path.join(here, "metrics", "deep_anen_triplet_metrics.json")
+    out_path = args.metrics_out or os.path.join(here, "metrics",
+                                                "deep_anen_triplet_metrics.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(metrics_full, f, indent=2)
+
+    if args.errors_out:
+        storms = get_storm_events(test_df)
+        np.savez(args.errors_out,
+                 timestamps=np.array([str(t) for t in storms["timestamp"]]),
+                 raw_fcst=raw, obs=obs_ev, members=members)
+        print(f"Saved per-event arrays to {args.errors_out}")
 
     table = pd.DataFrame({
         "Method": ["Raw NWP", "Deep Analog (Hu et al., 2023)"],

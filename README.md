@@ -72,11 +72,35 @@ predictor variables are Phase 2 work.
 | | |
 |---|---|
 | **Location** | Atlanta, GA — 33.64° N, 84.42° W |
-| **Period** | 2025-11-02 → 2026-11-01 (365 days, hourly, UTC) |
-| **Rows** | 8,760 (complete — no missing values after cleaning) |
 | **Forecast source** | Open-Meteo Previous-Runs API (archived NWP forecasts) |
 | **Observation source** | Open-Meteo Archive API (ERA5 reanalysis) |
-| **File** | `data/atlanta_weather_archive.csv` |
+
+Two regimes are carried side by side in this repository. The
+**1-year archive** is the original Phase 1–4 dataset; the **long
+archive** is the scale-up added after Phase 4. Both use the same
+Atlanta coordinates, the same APIs, and the same variable definitions.
+
+| | 1-year archive | Long archive |
+|---|---|---|
+| **Period** | 2025-11-02 → 2026-11-01 | 2018-01-01 → 2026-11-01 |
+| **Rows** | 8,760 (hourly, UTC) | 77,448 (hourly, UTC) |
+| **File** | `data/atlanta_weather_archive.csv` | `data/atlanta_weather_archive_10yr.csv` |
+| **Training** | ≤ 2026-08-15 — 6,888 rows | 2018-01-01 → 2024-11-01 — 59,928 rows |
+| **Validation** | → 2026-08-31 — 384 rows | 2024-11-02 → 2025-11-01 — 8,760 rows |
+| **Test** | ≥ 2026-09-01 — 1,488 rows | 2025-11-02 → 2026-11-01 — 8,760 rows |
+| **Test storm events** (obs_gust ≥ 35 km/h) | 130 | 1,286 |
+
+**Documented data limitation — the long archive starts 2018-01-01,
+not 2016-11-02.** The long archive was originally planned from
+2016-11-02, but a probe of the Open-Meteo Previous-Runs API showed it
+returns all-missing forecast values before 2018-01-01 00:00 UTC (the
+2016–2017 window was 100% NaN for all four forecast variables, while
+ERA5 observations cover the full range). The archive therefore starts
+at the first timestamp with valid forecast data, 2018-01-01. This is a
+limitation of the forecast source, not a choice, and it is why the
+file keeps its `_10yr` name while spanning ~8.8 years. No substitute
+forecast source was used, so `fcst_*` means the same thing in both
+regimes.
 
 Columns:
 
@@ -139,30 +163,53 @@ print(result["analogs"])          # the 10 closest historical timestamps
 
 ```
 ├── data/
-│   └── atlanta_weather_archive.csv   # 8,760 hourly rows, Atlanta GA
+│   ├── atlanta_weather_archive.csv       # 8,760 hourly rows, Atlanta GA
+│   └── atlanta_weather_archive_10yr.csv  # 77,448 hourly rows, 2018 → 2026
 ├── notebooks/
 │   ├── deep_anen_severe_weather.ipynb  # Phase 2 Colab notebook (GPU)
-│   └── comparison_analysis.ipynb       # Phase 4 4-way benchmark
+│   └── comparison_analysis.ipynb       # 4-way + dual-regime benchmark
 ├── models/
 │   ├── deep_anen_regression_weights.pth         # Phase 2 encoder weights
 │   ├── deep_anen_regression_weights.json        # text-safe state dict
+│   ├── deep_anen_regression_weights_10yr.pth    # long-archive encoder
+│   ├── deep_anen_regression_weights_10yr.json   # text-safe state dict
 │   ├── deep_anen_triplet_weights.pth            # Phase 4 LSTM weights
-│   └── deep_anen_triplet_weights.json           # text-safe state dict
+│   ├── deep_anen_triplet_weights.json           # text-safe state dict
+│   ├── deep_anen_triplet_weights_10yr.pth       # long-archive LSTM
+│   └── deep_anen_triplet_weights_10yr.json      # text-safe state dict
 ├── plots/
 │   ├── fig1_event_timeseries.png/.svg
 │   ├── fig2_metrics_bars.png/.svg
 │   ├── 3way_method_comparison_timeseries.png/.svg
 │   ├── rmse_crps_benchmark_barchart.png/.svg
 │   ├── 4way_method_comparison_timeseries.png/.svg
-│   └── rmse_crps_benchmark_barchart_4way.png/.svg
+│   ├── rmse_crps_benchmark_barchart_4way.png/.svg
+│   ├── dual_regime_rmse_crps_barchart.png/.svg
+│   ├── train_val_loss_regression_1yr.png/.svg
+│   ├── train_val_loss_regression_10yr.png/.svg
+│   ├── train_val_loss_triplet_1yr.png/.svg
+│   └── train_val_loss_triplet_10yr.png/.svg
 ├── metrics/
 │   ├── deep_anen_regression_metrics.json
+│   ├── deep_anen_regression_metrics_10yr.json
 │   ├── traditional_anen_metrics.json
+│   ├── traditional_anen_metrics_10yr.json
 │   ├── deep_anen_triplet_metrics.json
-│   └── comparison_metrics.json
+│   ├── deep_anen_triplet_metrics_10yr.json
+│   ├── comparison_metrics.json
+│   ├── comparison_metrics_10yr.json
+│   ├── dual_regime_comparison.json
+│   ├── dm_tests.json
+│   ├── train_val_loss_regression_1yr.json
+│   ├── train_val_loss_regression_10yr.json
+│   ├── train_val_loss_triplet_1yr.json
+│   └── train_val_loss_triplet_10yr.json
 ├── data_prep.py                      # shared protocol: split/scaler/events
 ├── traditional_anen.py               # Traditional AnEn engine (K=15)
 ├── phase4_triplet.py                 # Hu et al. (2023) Deep Analog (LSTM + RA triplets)
+├── train_regression_long.py          # Deep-AnEn-Regression retrain (long archive)
+├── dm_tests.py                       # Diebold-Mariano tests, both regimes
+├── plot_loss_curves.py               # training-vs-validation loss figures
 ├── fetch_data.py                     # Open-Meteo data pipeline
 ├── analog_ensemble.py                # AnalogEnsembleEngine (K=10)
 ├── run_pipeline.py                   # end-to-end runner + verification
@@ -449,6 +496,166 @@ significance testing.
 `plots/rmse_crps_benchmark_barchart_4way.png/.svg`, updated
 `notebooks/comparison_analysis.ipynb` and `metrics/comparison_metrics.json`.
 
+## Long-archive scale-up — dual-regime comparison
+
+All three methods were retrained and re-evaluated on the long archive
+(77,448 hourly rows, 2018-01-01 → 2026-11-01) under the identical
+protocol — K=15, ±168 h exclusion, analogs from the training pool
+only, the same four standardized predictors, `obs_gust` as target.
+The long training pool is 59,928 rows, validation 8,760, test 8,760,
+with **1,286 test storm events** (obs_gust ≥ 35 km/h). The long test
+window covers a full calendar year (all seasons); the 1-year test
+window is autumn-only (Sep–Nov), so the two test sets differ in
+composition — the same-events check below isolates the archive-length
+effect from the test-composition effect. All 1-year files are
+untouched; long-archive outputs carry the `_10yr` suffix.
+
+### Dual-regime results (RMSE / CRPS in km/h)
+
+| Method | Similarity space | 1-Yr RMSE | Long RMSE | 1-Yr CRPS | Long CRPS | 1-Yr DM p (vs Trad) | Long DM p (vs Trad) |
+|---|---|---|---|---|---|---|---|
+| Raw NWP | Deterministic | 13.23 | 12.79 | 11.42 | 10.87 | <0.001 | <0.001 |
+| Traditional AnEn | 4-D Physical | 7.43 | 7.63 | 4.15 | 4.36 | Baseline | Baseline |
+| Deep-AnEn-Regression | 16-D Latent | 7.86 | 7.67 | 4.45 | 4.41 | 0.035 | 0.227 |
+| Deep Analog (Hu et al., 2023) | 20-D Latent | 8.35 | 9.39 | 5.15 | 5.46 | 0.029 | <0.001 |
+
+![Dual-regime RMSE and CRPS](plots/dual_regime_rmse_crps_barchart.svg)
+
+### Findings
+
+- **The 4-D > 16-D > 20-D ordering persisted on the long archive.**
+  Traditional AnEn still scores best on both RMSE and CRPS in both
+  regimes, followed by Deep-AnEn-Regression, then Deep Analog (Hu
+  et al., 2023). The ordering did not narrow uniformly and did not
+  reverse.
+- **Deep-AnEn-Regression caught up.** Its gap to Traditional AnEn
+  narrowed from 0.43 to 0.04 km/h RMSE (CRPS gap 0.30 → 0.05), and
+  the gap is no longer statistically significant on the long regime
+  (DM p = 0.227) — the two methods are statistically tied there,
+  whereas the gap was significant on the 1-year regime (p = 0.035).
+- **Deep Analog (Hu et al., 2023) fell further behind.** Its gap to
+  Traditional AnEn widened from 0.92 to 1.76 km/h RMSE (CRPS gap
+  1.00 → 1.10) and is highly significant in both regimes (p = 0.029
+  on the 1-year regime, p = 7.0×10⁻⁶ on the long regime).
+- **The §4 prediction was falsified for the triplet model as
+  configured.** The comparison section predicted that a longer
+  archive should narrow or reverse the ordering. That held for the
+  regression embedding but not for the triplet embedding: the
+  triplet model's validation loss barely improved on the long run
+  (0.786 → 0.770 over 30 epochs, early stopping at 45 epochs) versus
+  the 1-year run (0.798 → 0.617 over 100 epochs), so the
+  configuration — not data volume — looks like the binding
+  constraint for that model. This is a finding about this
+  configuration, not about the method in general.
+
+### Same-events check — long-trained models on the exact 130 1-year events
+
+Because the long test window (1,286 events, all seasons) differs in
+composition from the 1-year test window (130 events, autumn only),
+the long-trained models were also scored on the exact same 130
+events, to separate the archive-length effect from the test-mix
+effect:
+
+| Method | 1-year-trained on 130 events | Long-trained on same 130 events |
+|---|---|---|
+| Raw NWP | 13.23 / 11.42 | 13.23 / 11.42 (identical — same forecasts) |
+| Traditional AnEn | 7.43 / 4.15 | **7.02 / 3.86** |
+| Deep-AnEn-Regression | 7.86 / 4.45 | **7.10 / 3.97** |
+| Deep Analog (Hu et al., 2023) | 8.35 / 5.15 | 8.31 / 4.91 |
+
+On identical events the longer archive improved Traditional AnEn
+(7.43 → 7.02 RMSE) and Deep-AnEn-Regression (7.86 → 7.10), narrowing
+the Regression–Traditional gap from 0.43 to 0.08 km/h. Deep Analog
+(Hu et al., 2023) was essentially flat on RMSE (8.35 → 8.31) with a
+small CRPS improvement (5.15 → 4.91). So the long archive did help
+two of the three methods; the worse full-year scores of the
+long-trained models partly reflect the harder, all-season test mix,
+and partly the models' skill. The 4-D > 16-D > 20-D ordering holds
+on identical events too.
+
+### Diebold–Mariano tests
+
+Paired significance tests versus Traditional AnEn on per-event
+absolute errors, in both regimes (`dm_tests.py`,
+`metrics/dm_tests.json`). Variant used: the loss differential is
+d = |e_method| − |e_traditional| on per-event absolute errors; the DM
+statistic is d̄ / √(V̂/T) with V̂ the Newey–West HAC long-run variance
+(Bartlett kernel, lag h = ⌊T^(1/3)⌋ — h=5 for T=130, h=10 for
+T=1,286); two-sided p-value from the standard normal. A negative
+mean differential means the method beats Traditional AnEn; p < 0.05
+is significant. Events are indexed by event order, not clock time.
+No small-sample correction is applied. Results:
+
+| Pair (vs Traditional AnEn) | 1-year (n=130) | Long (n=1,286) |
+|---|---|---|
+| Raw NWP | DM +6.20, p = 5.6×10⁻¹⁰, mean diff +5.98 | DM +15.54, p < 0.001, mean diff +4.95 |
+| Deep-AnEn-Regression | DM +2.11, p = 0.035, mean diff +0.49 | DM +1.21, p = 0.227, mean diff +0.06 |
+| Deep Analog (Hu et al., 2023) | DM +2.18, p = 0.029, mean diff +1.33 | DM +4.49, p = 7.0×10⁻⁶, mean diff +1.34 |
+
+All three methods are significantly better than Raw NWP in both
+regimes. On the 1-year regime both learned embeddings are
+significantly worse than Traditional AnEn (p = 0.035 and p = 0.029).
+On the long regime only Deep Analog remains significantly worse
+(p = 7.0×10⁻⁶); Deep-AnEn-Regression is statistically tied with
+Traditional AnEn (p = 0.227). The long-regime Raw NWP p-value is
+reported as <0.001 because the normal CDF underflows to 0.0 in
+double precision at DM = +15.54.
+
+### Overfitting check — training vs validation loss curves
+
+For each neural model in each regime, the training-vs-validation
+loss curve is kept as a figure, with the underlying per-epoch
+history saved as JSON (`plot_loss_curves.py`):
+
+| Model / regime | Train loss | Validation loss | Best validation | Final train−val gap |
+|---|---|---|---|---|
+| Deep-AnEn-Regression, 1-year (MSE, 30 epochs) | 0.826 → 0.395 | 0.463 → 0.296 | epoch 30 | −0.099 |
+| Deep-AnEn-Regression, long (MSE, 30 epochs) | 0.791 → 0.403 | 0.768 → 0.373 | epoch 30 | −0.031 |
+| Deep Analog, 1-year (triplet, 100 epochs) | 0.825 → 0.595 | 0.798 → 0.622 | 0.617 at epoch 95 | −0.027 |
+| Deep Analog, long (triplet, 45 epochs, early stop) | 0.803 → 0.755 | 0.786 → 0.770 | 0.770 at epoch 30 | +0.016 |
+
+![Training vs validation loss — Deep-AnEn-Regression, 1-year](plots/train_val_loss_regression_1yr.svg)
+![Training vs validation loss — Deep-AnEn-Regression, long](plots/train_val_loss_regression_10yr.svg)
+![Training vs validation loss — Deep Analog, 1-year](plots/train_val_loss_triplet_1yr.svg)
+![Training vs validation loss — Deep Analog, long](plots/train_val_loss_triplet_10yr.svg)
+
+No curve shows training loss falling while validation loss turns up
+and diverges — validation falls alongside training in all four
+cases, and the final train–validation gaps are small (< 0.1 in
+magnitude). Two notes: (1) the regression curves end with
+validation loss *below* training loss — the standard dropout
+artefact (dropout is active during training and inactive at
+validation), not a problem; (2) the long triplet curve barely
+improves (0.786 → 0.770 in 30 epochs, then plateau), while the
+1-year triplet curve improved steadily (0.798 → 0.617 over 100
+epochs) — consistent with the configuration, not data volume, being
+the binding constraint for the triplet model. The 1-year curves were
+recovered without retraining: the triplet curve was parsed from the
+existing per-epoch log (`phase4_train.log`), and the regression
+curve from the Phase 2 checkpoint's saved history.
+
+**Traditional AnEn has no train/val loss curve, by design.** It is
+non-parametric: it has no learned parameters and no training loop,
+so there is no training loss to plot and nothing to overfit in the
+neural sense. Its overfitting evidence is the protocol itself — the
+same test events for every method, no tuning on the test set,
+analogs drawn from the training pool only, and the ±168 h exclusion
+window — verified by the audits in the comparison notebook (§2b for
+the 1-year regime: 5,850 analog selections, all six checks pass;
+§5b for the long regime: 57,870 analog selections, all six checks
+pass).
+
+**Artifacts:** `train_regression_long.py`,
+`models/deep_anen_regression_weights_10yr.pth` + `.json`,
+`models/deep_anen_triplet_weights_10yr.pth` + `.json`,
+`metrics/*_10yr.json`, `metrics/dm_tests.json`,
+`metrics/dual_regime_comparison.json`,
+`plots/dual_regime_rmse_crps_barchart.png/.svg`,
+`plots/train_val_loss_*.png/.svg`, `dm_tests.py`,
+`plot_loss_curves.py`, updated
+`notebooks/comparison_analysis.ipynb` (21 cells, 0 errors, both
+audits pass).
+
 ## Roadmap
 
 - **Phase 2:** CRPS / rank-histogram verification, K and predictor
@@ -461,6 +668,15 @@ significance testing.
   triplet hyperparameter variants validated on validation data only,
   rank histograms, and paired significance testing before claiming any
   ranking is statistically meaningful.
+- **Long-archive scale-up (complete):** all three methods retrained on
+  77,448 hourly rows (2018 → 2026) and compared against the 1-year
+  regime with Diebold–Mariano tests and same-events checks. The 4-D >
+  16-D > 20-D ordering persisted and widened for the triplet model;
+  Deep-AnEn-Regression caught up and is statistically tied with
+  Traditional AnEn on the long regime (p = 0.227). Follow-ups:
+  triplet hyperparameter variants (margin, hard-negative rate,
+  embedding dimension) validated on validation data only, richer
+  predictors, rank histograms, and a second location.
 
 ## References
 
@@ -475,6 +691,10 @@ significance testing.
 - Platzer, P., et al. (2024). *Distance Learning for Analog Methods.*
   HAL-04841334 — reducing feature-space dimension preserves analog
   performance on small and medium-sized datasets.
+- Diebold, F. X., & Mariano, R. S. (1995). *Comparing Predictive
+  Accuracy.* Journal of Business & Economic Statistics, 13(3),
+  253–263. — the paired significance test used in the dual-regime
+  comparison (Newey–West HAC variance, Bartlett kernel).
 - Open-Meteo: https://open-meteo.com/ (Previous-Runs & Archive APIs)
 
 ## License

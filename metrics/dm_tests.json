@@ -1,0 +1,64 @@
+{
+  "method": "Diebold-Mariano test on per-event absolute errors",
+  "variant": "loss differential d = |e_method| - |e_traditional|; Newey-West HAC long-run variance, Bartlett kernel, lag h = floor(T^(1/3)); two-sided p-value from N(0,1); negative mean diff means the method beats Traditional AnEn",
+  "regimes": {
+    "1yr": {
+      "n_events": 130,
+      "pairs_vs_traditional": {
+        "Raw NWP": {
+          "dm_statistic": 6.202254221349954,
+          "p_value": 5.566007654778105e-10,
+          "mean_diff": 5.979692221282051,
+          "n": 130,
+          "lag_h": 5,
+          "var_hat": 120.83754347693937
+        },
+        "Deep-AnEn-Regression": {
+          "dm_statistic": 2.1074723543295892,
+          "p_value": 0.03507665560294937,
+          "mean_diff": 0.4890461153846147,
+          "n": 130,
+          "lag_h": 5,
+          "var_hat": 7.000341176895604
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "dm_statistic": 2.1799872113646344,
+          "p_value": 0.029258409533282403,
+          "mean_diff": 1.3325537666666658,
+          "n": 130,
+          "lag_h": 5,
+          "var_hat": 48.57412018079162
+        }
+      }
+    },
+    "long": {
+      "n_events": 1286,
+      "pairs_vs_traditional": {
+        "Raw NWP": {
+          "dm_statistic": 15.54263588356408,
+          "p_value": 0.0,
+          "mean_diff": 4.952491341161224,
+          "n": 1286,
+          "lag_h": 10,
+          "var_hat": 130.5686977190101
+        },
+        "Deep-AnEn-Regression": {
+          "dm_statistic": 1.2070475872297628,
+          "p_value": 0.22741381798961702,
+          "mean_diff": 0.06158628607050298,
+          "n": 1286,
+          "lag_h": 10,
+          "var_hat": 3.347805465114502
+        },
+        "Deep Analog (Hu et al., 2023)": {
+          "dm_statistic": 4.494270411563335,
+          "p_value": 6.980887396368374e-06,
+          "mean_diff": 1.3418911093105241,
+          "n": 1286,
+          "lag_h": 10,
+          "var_hat": 114.6455284530351
+        }
+      }
+    }
+  }
+}
