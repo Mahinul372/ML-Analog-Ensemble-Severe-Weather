@@ -19,20 +19,26 @@ Rules enforced here:
 
 Two regimes share this protocol, branched by which CSV file is passed
 (see regime_for_path):
-  * "1yr"  — data/atlanta_weather_archive.csv (2025-11-02 → 2026-11-01):
+  * "1yr"  — data/atlanta_weather_archive_1yr.csv (2025-11-02 → 2026-11-01):
     train ≤ 2026-08-15 (6,888 rows), val → 2026-08-31 (384), test
     ≥ 2026-09-01 (1,488 rows, 130 storm events).
-  * "long" — data/atlanta_weather_archive_10yr.csv (2018-01-01 →
-    2026-11-01, 77,448 rows): train 2018-01-01 → 2024-11-01 (59,928
-    rows), val 2024-11-02 → 2025-11-01 (8,760), test 2025-11-02 →
-    2026-11-01 (8,760 rows). The archive starts 2018-01-01 because the
-    Open-Meteo Previous-Runs API returns no valid forecasts earlier
-    (verified by probe 2026-11-09). The test window is IDENTICAL in
-    calendar terms to the 1-year file's full span, but the training pool
-    is ~8.7x larger — that is the scale-up comparison.
+  * "long" — the long archive, stored as one file per calendar year,
+    data/atlanta_weather_archive_2018.csv … _2026.csv (2018-01-01 →
+    2026-11-01, 77,448 rows concatenated): train 2018-01-01 → 2024-11-01
+    (59,928 rows), val 2024-11-02 → 2025-11-01 (8,760), test
+    2025-11-02 → 2026-11-01 (8,760 rows). The archive starts 2018-01-01
+    because the Open-Meteo Previous-Runs API returns no valid forecasts
+    earlier (verified by probe 2026-11-09). The test window is IDENTICAL
+    in calendar terms to the 1-year file's full span, but the training
+    pool is ~8.7x larger — that is the scale-up comparison. The yearly
+    files are canonical: the old combined
+    data/atlanta_weather_archive_10yr.csv was exactly their
+    concatenation and was removed because a single 7.15 MB file exceeded
+    the GitHub snapshot upload size limit (HTTP 413).
 """
 
 import os
+import re
 
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -59,23 +65,94 @@ EXCLUSION_HOURS = 7 * 24  # +/-7-day window around each target timestamp
 K = 15                    # ensemble size for both AnEn variants
 STORM_THRESHOLD = 35.0    # km/h; defines the test storm-event subset
 
+# Long archive, stored as one file per calendar year (canonical layout).
+# 2018–2025 are full years; 2026 runs 2026-01-01 → 2026-11-01 (7,320 rows).
+LONG_YEARS = list(range(2018, 2027))
+LONG_YEAR_ROWS = {2018: 8760, 2019: 8760, 2020: 8784, 2021: 8760,
+                  2022: 8760, 2023: 8760, 2024: 8784, 2025: 8760, 2026: 7320}
+LONG_TOTAL_ROWS = 77448
+LONG_YEAR_PATTERN = re.compile(r"atlanta_weather_archive_20\d\d\.csv$")
+LEGACY_LONG_NAME = "atlanta_weather_archive_10yr.csv"
+
+
+def long_year_files(data_dir=None):
+    """Paths of the nine yearly long-archive files, in calendar order."""
+    if data_dir is None:
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "data")
+    return [os.path.join(data_dir, f"atlanta_weather_archive_{y}.csv")
+            for y in LONG_YEARS]
+
+
+def is_long_archive_path(path):
+    """True if `path` refers to the long archive: a yearly file, the
+    legacy combined filename, or a directory containing the yearly files."""
+    if path is None:
+        return False
+    p = str(path)
+    if os.path.isdir(p):
+        return True
+    name = os.path.basename(p)
+    return bool(LONG_YEAR_PATTERN.match(name)) or name == LEGACY_LONG_NAME
+
+
+def load_long_archive(data_dir=None):
+    """Load the long archive by concatenating its nine yearly files.
+
+    Verifies the result is exactly 77,448 hourly rows with no internal
+    date gaps and no NaNs — the same checks the combined file passed.
+    """
+    paths = long_year_files(data_dir)
+    missing = [p for p in paths if not os.path.exists(p)]
+    if missing:
+        raise FileNotFoundError(
+            f"missing long-archive yearly files: {missing}")
+    frames = [pd.read_csv(p, parse_dates=["timestamp"]) for p in paths]
+    for year, frame in zip(LONG_YEARS, frames):
+        expected = LONG_YEAR_ROWS[year]
+        if len(frame) != expected:
+            raise ValueError(
+                f"{os.path.basename(paths[LONG_YEARS.index(year)])}: "
+                f"expected {expected} rows, got {len(frame)}")
+    df = pd.concat(frames, ignore_index=True)
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    if len(df) != LONG_TOTAL_ROWS:
+        raise ValueError(
+            f"long archive: expected {LONG_TOTAL_ROWS} rows, got {len(df)}")
+    diffs = df["timestamp"].diff().dropna()
+    n_gaps = int((diffs != pd.Timedelta(hours=1)).sum())
+    if n_gaps:
+        raise ValueError(f"long archive: {n_gaps} internal date gaps")
+    if df.isna().any().any():
+        raise ValueError("long archive: NaN values present")
+    return df
+
 
 def regime_for_path(path):
     """Which split regime a CSV file belongs to, by filename.
 
-    Files with "10yr" in the name use the long-archive splits; everything
-    else uses the 1-year splits. The 1-year file is the default, so any
+    Yearly long-archive files (atlanta_weather_archive_YYYY.csv) and the
+    legacy combined name use the long-archive splits; everything else
+    uses the 1-year splits. The 1-year file is the default, so any
     caller that never passes a path keeps the original behaviour.
     """
-    name = os.path.basename(str(path)) if path is not None else ""
-    return "long" if "10yr" in name else "1yr"
+    return "long" if is_long_archive_path(path) else "1yr"
 
 
 def load_archive(path=None):
-    """Load data/atlanta_weather_archive.csv, sorted by timestamp."""
+    """Load an archive, sorted by timestamp.
+
+    Default (no path): data/atlanta_weather_archive_1yr.csv. A path
+    referring to the long archive (a yearly file, the legacy combined
+    filename, or a directory) loads the nine yearly files concatenated.
+    """
     if path is None:
         here = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(here, "data", "atlanta_weather_archive.csv")
+        path = os.path.join(here, "data", "atlanta_weather_archive_1yr.csv")
+    if is_long_archive_path(path):
+        data_dir = path if os.path.isdir(str(path)) else os.path.dirname(
+            os.path.abspath(str(path)))
+        return load_long_archive(data_dir)
     df = pd.read_csv(path, parse_dates=["timestamp"])
     return df.sort_values("timestamp").reset_index(drop=True)
 
@@ -101,10 +178,21 @@ def load_and_split(path=None, regime=None):
     """Load an archive and split it under the regime for that file.
 
     The regime is detected from the filename unless given explicitly.
+    An explicit regime="long" (or a long-archive path) loads the nine
+    yearly files concatenated; regime="1yr" loads the single 1-year file.
     Returns (df, train_df, val_df, test_df, regime).
     """
-    df = load_archive(path)
     if regime is None:
+        regime = regime_for_path(path)
+    if regime == "long":
+        if path is None:
+            df = load_long_archive()
+        else:
+            data_dir = path if os.path.isdir(str(path)) else os.path.dirname(
+                os.path.abspath(str(path)))
+            df = load_long_archive(data_dir)
+    else:
+        df = load_archive(path)
         regime = regime_for_path(path)
     train_df, val_df, test_df = split_archive(df, regime=regime)
     return df, train_df, val_df, test_df, regime

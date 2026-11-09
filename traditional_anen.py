@@ -20,10 +20,11 @@ Scoring convention (consistent across all three methods):
 Usage:
     python traditional_anen.py            # evaluate + save metrics JSON (1-year)
     python traditional_anen.py --demo     # also print one worked example
-    python traditional_anen.py --archive data/atlanta_weather_archive_10yr.csv \
+    python traditional_anen.py --archive data/atlanta_weather_archive_2018.csv \
         --metrics-out metrics/traditional_anen_metrics_10yr.json \
         --errors-out metrics/long_traditional_errors.npz
-        # long-archive run: splits branch by filename (see data_prep)
+        # long-archive run: any yearly file (or the data directory) loads
+        # the nine yearly files concatenated; splits branch by regime (see data_prep)
 """
 
 import argparse
@@ -185,7 +186,7 @@ def main():
 
     here = os.path.dirname(os.path.abspath(__file__))
     archive_path = args.archive or os.path.join(here, "data",
-                                                "atlanta_weather_archive.csv")
+                                                "atlanta_weather_archive_1yr.csv")
     regime = regime_for_path(archive_path)
     df = load_archive(archive_path)
     engine = TraditionalAnalogEnsemble(df, regime=regime)

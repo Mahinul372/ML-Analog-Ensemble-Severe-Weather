@@ -23,24 +23,28 @@ Modes
 -----
 Default (no arguments): the Phase 1 one-year archive — the past 365 days
 ending 7 days ago, single request per API, saved to
-``data/atlanta_weather_archive.csv``. This reproduces the 1-year file
+``data/atlanta_weather_archive_1yr.csv``. This reproduces the 1-year file
 exactly; nothing about the 1-year pipeline changed.
 
 Long-archive mode (``--long-archive``): 2018-01-01 → 2026-11-01,
 fetched in one-year chunks with a 2 s pause between chunks (to respect
-Open-Meteo rate limits), saved to ``data/atlanta_weather_archive_10yr.csv``.
-The start date is NOT arbitrary: the Previous-Runs API returns all-NaN
-forecasts before 2018-01-01 00:00 UTC (verified by probe, see
-/tmp/probe_10yr_findings.md), so 2018-01-01 is the earliest date with
-valid forecast data. The file keeps the ``_10yr`` name because it is the
-long-archive counterpart of the 1-year file; its span is ~8.8 years
-(77,448 hourly rows).
+Open-Meteo rate limits), saved as one file per calendar year,
+``data/atlanta_weather_archive_2018.csv`` … ``_2026.csv``. The yearly
+files are the canonical long-archive layout: the old combined
+``data/atlanta_weather_archive_10yr.csv`` (7.15 MB) exceeded the GitHub
+snapshot upload size limit (HTTP 413) and was removed; concatenating
+the yearly files reproduces it exactly. The start date is NOT
+arbitrary: the Previous-Runs API returns all-NaN forecasts before
+2018-01-01 00:00 UTC (verified by probe, see /tmp/probe_10yr_findings.md),
+so 2018-01-01 is the earliest date with valid forecast data. The files
+keep the ``_10yr`` naming in their metrics/weights counterparts; the
+data span is ~8.8 years (77,448 hourly rows).
 
 Usage:
     python fetch_data.py                  # 1-year archive (default)
-    python fetch_data.py --long-archive   # long archive (2018-01-01 -> 2026-11-01)
+    python fetch_data.py --long-archive   # long archive, yearly files
     python fetch_data.py --start 2018-01-01 --end 2026-11-01 \\
-        --output data/atlanta_weather_archive_10yr.csv --chunk-years
+        --output data/atlanta_weather_archive_2018.csv --chunk-years
 """
 
 from __future__ import annotations
@@ -86,8 +90,34 @@ LONG_END_DATE = date(2026, 11, 1)
 CHUNK_SLEEP_SECONDS = 2
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
-OUTPUT_PATH = DATA_DIR / "atlanta_weather_archive.csv"
-LONG_OUTPUT_PATH = DATA_DIR / "atlanta_weather_archive_10yr.csv"
+OUTPUT_PATH = DATA_DIR / "atlanta_weather_archive_1yr.csv"
+
+# Long-archive yearly files (canonical layout): one file per calendar
+# year, 2018-01-01 -> 2026-11-01 (77,448 hourly rows total).
+LONG_YEARS = list(range(2018, 2027))
+LONG_YEAR_ROWS = {2018: 8760, 2019: 8760, 2020: 8784, 2021: 8760,
+                  2022: 8760, 2023: 8760, 2024: 8784, 2025: 8760, 2026: 7320}
+
+
+def long_year_path(year: int) -> Path:
+    """Path of the long-archive file for one calendar year."""
+    return DATA_DIR / f"atlanta_weather_archive_{year}.csv"
+
+
+def write_yearly_files(df: pd.DataFrame) -> list[Path]:
+    """Split a long-archive DataFrame by calendar year and write the
+    yearly files. Verifies each file's row count; returns the paths."""
+    written = []
+    for year in LONG_YEARS:
+        part = df[df["timestamp"].dt.year == year]
+        expected = LONG_YEAR_ROWS[year]
+        assert len(part) == expected, \
+            f"year {year}: expected {expected} rows, got {len(part)}"
+        path = long_year_path(year)
+        part.to_csv(path, index=False)
+        written.append(path)
+        print(f"Saved {path} ({len(part)} rows)")
+    return written
 
 # Explicit output column names: fcst_* = NWP forecast, obs_* = observation.
 COLUMN_MAP = {
@@ -219,20 +249,21 @@ def main() -> Path:
     parser = argparse.ArgumentParser(description="Fetch Atlanta weather archive")
     parser.add_argument("--long-archive", action="store_true",
                         help="fetch 2018-01-01 -> 2026-11-01 in year chunks "
-                             "to data/atlanta_weather_archive_10yr.csv")
+                             "to the yearly files data/atlanta_weather_archive_"
+                             "2018.csv ... _2026.csv")
     parser.add_argument("--start", type=str, default=None,
                         help="start date YYYY-MM-DD (default: 1-year mode)")
     parser.add_argument("--end", type=str, default=None,
                         help="end date YYYY-MM-DD (default: 1-year mode)")
     parser.add_argument("--output", type=str, default=None,
-                        help="output CSV path (default: data/atlanta_weather_archive.csv)")
+                        help="output CSV path (default: data/atlanta_weather_archive_1yr.csv)")
     parser.add_argument("--chunk-years", action="store_true",
                         help="fetch one calendar year at a time (2 s pause between years)")
     args = parser.parse_args()
 
     if args.long_archive:
         start_date, end_date = LONG_START_DATE, LONG_END_DATE
-        output_path = LONG_OUTPUT_PATH
+        output_path = None  # long mode writes the yearly files, not one file
         chunk_years = True
         cache_name = ".openmeteo_cache_10yr"
         expected_rows = 77448
@@ -248,6 +279,11 @@ def main() -> Path:
     df = build_archive(start_date, end_date, chunk_years=chunk_years,
                        cache_name=cache_name)
     verify_archive(df, expected_rows=expected_rows)
+    if args.long_archive:
+        written = write_yearly_files(df)
+        print(f"Saved long archive as {len(written)} yearly files "
+              f"(concatenating them reproduces the 77,448-row archive)")
+        return written[0].parent
     df.to_csv(output_path, index=False)
     print(f"Saved archive to {output_path}")
     print(df.head())

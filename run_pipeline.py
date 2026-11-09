@@ -2,7 +2,7 @@
 run_pipeline.py — Phase 1 end-to-end execution.
 
 1. Runs the data pipeline (``fetch_data.py``) to generate
-   ``data/atlanta_weather_archive.csv``.
+   ``data/atlanta_weather_archive_1yr.csv``.
 2. Instantiates ``AnalogEnsembleEngine`` on the archive.
 3. Runs a test query on a sample severe-weather day: the timestamp of
    the peak observed wind gust in the dataset.

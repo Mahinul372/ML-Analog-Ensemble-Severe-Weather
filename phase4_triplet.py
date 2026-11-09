@@ -510,7 +510,7 @@ def main():
     print(f"PyTorch {torch.__version__} | device: {device}")
 
     archive_path = args.archive or os.path.join(here, "data",
-                                                "atlanta_weather_archive.csv")
+                                                "atlanta_weather_archive_1yr.csv")
     df, train_df, val_df, test_df, regime = load_and_split(archive_path)
     # Verify split dimensions against data_prep outputs (not hardcoded).
     print(f"Archive: {archive_path} | regime: {regime}")

@@ -138,7 +138,7 @@ def compute_1yr_errors():
     the three member arrays (for CRPS cross-checks)."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     df, train_df, val_df, test_df, regime = load_and_split(
-        os.path.join(HERE, "data", "atlanta_weather_archive.csv"))
+        os.path.join(HERE, "data", "atlanta_weather_archive_1yr.csv"))
     assert regime == "1yr"
     storms = get_storm_events(test_df)
     event_ts = list(storms["timestamp"])

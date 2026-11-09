@@ -46,7 +46,6 @@ from data_prep import (
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ARCHIVE = os.path.join(HERE, "data", "atlanta_weather_archive_10yr.csv")
 SEED = 42
 EPOCHS = 30
 LR = 1e-3
@@ -78,7 +77,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"PyTorch {torch.__version__} | device: {device}")
 
-    df, train_df, val_df, test_df, regime = load_and_split(ARCHIVE)
+    df, train_df, val_df, test_df, regime = load_and_split(regime="long")
     assert regime == "long"
     print(f"Archive: {len(df)} rows | Train: {len(train_df)} | "
           f"Val: {len(val_df)} | Test window: {len(test_df)} rows")

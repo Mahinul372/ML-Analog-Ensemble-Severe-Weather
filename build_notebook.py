@@ -74,9 +74,9 @@ if DEVICE.type == "cuda":
 # Locate the repo root: in Colab the data file is missing, so clone the repo.
 # (nbconvert and some runners start the kernel in the notebook's own folder,
 # so also check the parent directory before cloning.)
-if os.path.exists("data/atlanta_weather_archive.csv"):
+if os.path.exists("data/atlanta_weather_archive_1yr.csv"):
     pass
-elif os.path.exists("../data/atlanta_weather_archive.csv"):
+elif os.path.exists("../data/atlanta_weather_archive_1yr.csv"):
     os.chdir("..")
 else:
     print("Cloning repository ...")
@@ -90,7 +90,7 @@ os.makedirs("metrics", exist_ok=True)"""))
 # ---------------------------------------------------------------- 2. §1 md
 cells.append(nbf.v4.new_markdown_cell("""## 1. Dataset & Preprocessing
 
-**Source:** `data/atlanta_weather_archive.csv` — 8,760 hourly rows for Atlanta, GA
+**Source:** `data/atlanta_weather_archive_1yr.csv` — 8,760 hourly rows for Atlanta, GA
 (33.64° N, 84.42° W), 2025-11-02 → 2026-11-01 (UTC).
 
 - **Forecasts** (`fcst_*`): archived NWP forecasts, Open-Meteo Previous-Runs API.
@@ -113,7 +113,7 @@ test-period information can leak into a test prediction."""))
 
 # ---------------------------------------------------------------- 3. §1 code
 cells.append(nbf.v4.new_code_cell("""# --- Load archive ------------------------------------------------------------
-df = pd.read_csv("data/atlanta_weather_archive.csv", parse_dates=["timestamp"])
+df = pd.read_csv("data/atlanta_weather_archive_1yr.csv", parse_dates=["timestamp"])
 df = df.sort_values("timestamp").reset_index(drop=True)
 print(f"Archive: {len(df)} hourly rows, {df['timestamp'].min()} → {df['timestamp'].max()}")
 print(f"Missing values: {int(df.isna().sum().sum())}")
