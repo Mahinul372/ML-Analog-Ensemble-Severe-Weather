@@ -84,11 +84,31 @@ Atlanta coordinates, the same APIs, and the same variable definitions.
 |---|---|---|
 | **Period** | 2025-11-02 → 2026-11-01 | 2018-01-01 → 2026-11-01 |
 | **Rows** | 8,760 (hourly, UTC) | 77,448 (hourly, UTC) |
-| **File** | `data/atlanta_weather_archive.csv` | `data/atlanta_weather_archive_10yr.csv` |
+| **File** | `data/atlanta_weather_archive_1yr.csv` | `data/atlanta_weather_archive_2018.csv` … `_2026.csv` (one file per calendar year) |
 | **Training** | ≤ 2026-08-15 — 6,888 rows | 2018-01-01 → 2024-11-01 — 59,928 rows |
 | **Validation** | → 2026-08-31 — 384 rows | 2024-11-02 → 2025-11-01 — 8,760 rows |
 | **Test** | ≥ 2026-09-01 — 1,488 rows | 2025-11-02 → 2026-11-01 — 8,760 rows |
 | **Test storm events** (obs_gust ≥ 35 km/h) | 130 | 1,286 |
+
+The yearly long-archive files, with exact date ranges and row counts:
+
+| File | Date range (UTC) | Rows |
+|---|---|---:|
+| `data/atlanta_weather_archive_2018.csv` | 2018-01-01 → 2018-12-31 | 8,760 |
+| `data/atlanta_weather_archive_2019.csv` | 2019-01-01 → 2019-12-31 | 8,760 |
+| `data/atlanta_weather_archive_2020.csv` | 2020-01-01 → 2020-12-31 | 8,784 |
+| `data/atlanta_weather_archive_2021.csv` | 2021-01-01 → 2021-12-31 | 8,760 |
+| `data/atlanta_weather_archive_2022.csv` | 2022-01-01 → 2022-12-31 | 8,760 |
+| `data/atlanta_weather_archive_2023.csv` | 2023-01-01 → 2023-12-31 | 8,760 |
+| `data/atlanta_weather_archive_2024.csv` | 2024-01-01 → 2024-12-31 | 8,784 |
+| `data/atlanta_weather_archive_2025.csv` | 2025-01-01 → 2025-12-31 | 8,760 |
+| `data/atlanta_weather_archive_2026.csv` | 2026-01-01 → 2026-11-01 | 7,320 |
+| **Total** | 2018-01-01 → 2026-11-01 | **77,448** |
+
+Concatenating the nine yearly files in calendar order reproduces the
+long archive exactly (verified byte-for-byte, sha256). `data_prep.py`
+loads the long archive this way; any yearly file path (or the `data/`
+directory) selects the long-archive regime.
 
 **Documented data limitation — the long archive starts 2018-01-01,
 not 2016-11-02.** The long archive was originally planned from
@@ -98,13 +118,19 @@ returns all-missing forecast values before 2018-01-01 00:00 UTC (the
 ERA5 observations cover the full range). The archive therefore starts
 at the first timestamp with valid forecast data, 2018-01-01. This is a
 limitation of the forecast source, not a choice, and it is why the
-file keeps its `_10yr` name while spanning ~8.8 years. No substitute
-forecast source was used, so `fcst_*` means the same thing in both
-regimes. **Note:** the long-archive CSV itself (7.15 MB) is not in
-this GitHub snapshot — the snapshot connector rejects a single file
-of that size (HTTP 413). It is kept in the local repository and is
-fully regenerable from the public APIs with
-`python fetch_data.py --long-archive`.
+long archive spans ~8.8 years while its metrics and weights keep the
+`_10yr` suffix. No substitute forecast source was used, so `fcst_*`
+means the same thing in both regimes.
+
+**Why the long archive is stored as yearly files.** The long archive
+was first saved as a single combined CSV
+(`data/atlanta_weather_archive_10yr.csv`, 7.15 MB), but that file
+exceeded the GitHub snapshot upload size limit (HTTP 413) and could not
+be pushed. It is now stored as the nine yearly files above (~0.8 MB
+each), which upload fine; the combined file was removed from the
+repository. The yearly files are fully regenerable from the public APIs
+with `python fetch_data.py --long-archive`, and concatenating them
+reproduces the removed combined file exactly.
 
 Columns:
 
@@ -154,7 +180,7 @@ python run_pipeline.py --skip-fetch
 import pandas as pd
 from analog_ensemble import AnalogEnsembleEngine
 
-df = pd.read_csv("data/atlanta_weather_archive.csv", parse_dates=["timestamp"])
+df = pd.read_csv("data/atlanta_weather_archive_1yr.csv", parse_dates=["timestamp"])
 engine = AnalogEnsembleEngine(df)
 
 result = engine.find_analogs("2026-01-31 20:00:00+00:00", K=10)
@@ -167,8 +193,16 @@ print(result["analogs"])          # the 10 closest historical timestamps
 
 ```
 ├── data/
-│   ├── atlanta_weather_archive.csv       # 8,760 hourly rows, Atlanta GA
-│   └── atlanta_weather_archive_10yr.csv  # 77,448 hourly rows, 2018 → 2026
+│   ├── atlanta_weather_archive_1yr.csv       # 8,760 hourly rows, Atlanta GA
+│   ├── atlanta_weather_archive_2018.csv      # 8,760 rows (long archive, yearly)
+│   ├── atlanta_weather_archive_2019.csv      # 8,760 rows
+│   ├── atlanta_weather_archive_2020.csv      # 8,784 rows (leap year)
+│   ├── atlanta_weather_archive_2021.csv      # 8,760 rows
+│   ├── atlanta_weather_archive_2022.csv      # 8,760 rows
+│   ├── atlanta_weather_archive_2023.csv      # 8,760 rows
+│   ├── atlanta_weather_archive_2024.csv      # 8,784 rows (leap year)
+│   ├── atlanta_weather_archive_2025.csv      # 8,760 rows
+│   └── atlanta_weather_archive_2026.csv      # 7,320 rows (to 2026-11-01)
 ├── notebooks/
 │   ├── deep_anen_severe_weather.ipynb  # Phase 2 Colab notebook (GPU)
 │   └── comparison_analysis.ipynb       # 4-way + dual-regime benchmark

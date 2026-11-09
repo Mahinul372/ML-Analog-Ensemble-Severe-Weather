@@ -103,9 +103,9 @@ if DEVICE.type == "cuda":
     print(f"GPU: {torch.cuda.get_device_name(0)}")
 
 # Locate the repo root (same logic as the Phase 2 notebook).
-if os.path.exists("data/atlanta_weather_archive.csv"):
+if os.path.exists("data/atlanta_weather_archive_1yr.csv"):
     pass
-elif os.path.exists("../data/atlanta_weather_archive.csv"):
+elif os.path.exists("../data/atlanta_weather_archive_1yr.csv"):
     os.chdir("..")
 else:
     print("Cloning repository ...")
@@ -146,7 +146,7 @@ Everything below is defined **once** in `data_prep.py` and imported by
 every experiment — preprocessing and splits are never recreated per
 method:
 
-- **Dataset:** `data/atlanta_weather_archive.csv` — 8,760 hourly rows,
+- **Dataset:** `data/atlanta_weather_archive_1yr.csv` — 8,760 hourly rows,
   Atlanta, GA, 2025-11-02 → 2026-11-01 (UTC).
 - **Predictors:** the same 4 standardized forecast variables
   (`fcst_temp`, `fcst_wind`, `fcst_gust`, `fcst_press`).
@@ -634,11 +634,14 @@ scale-up test of the dimensionality finding in §4. If the 4-D > 16-D >
 pool should narrow or reverse it; if the ordering persists, the pattern
 is robust to archive length.
 
-- **Dataset:** `data/atlanta_weather_archive_10yr.csv` — 77,448 hourly
-  rows, Atlanta, GA, 2018-01-01 → 2026-11-01 (UTC). The archive starts
-  2018-01-01 because the Open-Meteo Previous-Runs API returns no valid
-  forecasts earlier (verified by probe; the file keeps the `_10yr` name
-  as the long-archive counterpart of the 1-year file).
+- **Dataset:** the long archive, stored as one file per calendar year —
+  `data/atlanta_weather_archive_2018.csv` … `_2026.csv`, 77,448 hourly
+  rows concatenated, Atlanta, GA, 2018-01-01 → 2026-11-01 (UTC). The
+  archive starts 2018-01-01 because the Open-Meteo Previous-Runs API
+  returns no valid forecasts earlier (verified by probe). The yearly
+  files are the canonical layout: the old combined 7.15 MB file
+  exceeded the GitHub snapshot upload size limit and was removed;
+  concatenating the yearly files reproduces it exactly.
 - **Splits (strictly chronological, from `data_prep.py`):** train
   2018-01-01 → 2024-11-01 (**59,928** rows), validation 2024-11-02 →
   2025-11-01 (8,760), test 2025-11-02 → 2026-11-01 (8,760). The
@@ -663,7 +666,7 @@ is robust to archive length.
 # ---------------------------------------------------------------- 11. §5 code
 cells.append(nbf.v4.new_code_cell("""# --- Long-archive evaluation: all four methods on the IDENTICAL 1,286 events --
 df_long, train_long, val_long, test_long, regime_long = load_and_split(
-    "data/atlanta_weather_archive_10yr.csv")
+    regime="long")
 assert regime_long == "long"
 print(f"Long archive: {len(df_long)} hourly rows, "
       f"{df_long['timestamp'].min()} → {df_long['timestamp'].max()}")
