@@ -100,7 +100,11 @@ at the first timestamp with valid forecast data, 2018-01-01. This is a
 limitation of the forecast source, not a choice, and it is why the
 file keeps its `_10yr` name while spanning ~8.8 years. No substitute
 forecast source was used, so `fcst_*` means the same thing in both
-regimes.
+regimes. **Note:** the long-archive CSV itself (7.15 MB) is not in
+this GitHub snapshot — the snapshot connector rejects a single file
+of that size (HTTP 413). It is kept in the local repository and is
+fully regenerable from the public APIs with
+`python fetch_data.py --long-archive`.
 
 Columns:
 
