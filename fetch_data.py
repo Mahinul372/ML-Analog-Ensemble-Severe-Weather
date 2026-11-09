@@ -30,15 +30,14 @@ Long-archive mode (``--long-archive``): 2018-01-01 → 2026-11-01,
 fetched in one-year chunks with a 2 s pause between chunks (to respect
 Open-Meteo rate limits), saved as one file per calendar year,
 ``data/atlanta_weather_archive_2018.csv`` … ``_2026.csv``. The yearly
-files are the canonical long-archive layout: the old combined
-``data/atlanta_weather_archive_10yr.csv`` (7.15 MB) exceeded the GitHub
-snapshot upload size limit (HTTP 413) and was removed; concatenating
-the yearly files reproduces it exactly. The start date is NOT
-arbitrary: the Previous-Runs API returns all-NaN forecasts before
-2018-01-01 00:00 UTC (verified by probe, see /tmp/probe_10yr_findings.md),
-so 2018-01-01 is the earliest date with valid forecast data. The files
-keep the ``_10yr`` naming in their metrics/weights counterparts; the
-data span is ~8.8 years (77,448 hourly rows).
+files are the canonical long-archive layout: the old combined single
+file (7.15 MB) exceeded the GitHub snapshot upload size limit (HTTP 413)
+and was removed; concatenating the yearly files reproduces it exactly.
+The start date is NOT arbitrary: the Previous-Runs API returns all-NaN
+forecasts before 2018-01-01 00:00 UTC (verified by probe, 2026-11-09),
+so 2018-01-01 is the earliest date with valid forecast data. The
+metrics and weights keep the ``_8yr10mo`` suffix (8 years 10 months);
+the data span is 8 years 10 months (77,448 hourly rows).
 
 Usage:
     python fetch_data.py                  # 1-year archive (default)
@@ -265,7 +264,7 @@ def main() -> Path:
         start_date, end_date = LONG_START_DATE, LONG_END_DATE
         output_path = None  # long mode writes the yearly files, not one file
         chunk_years = True
-        cache_name = ".openmeteo_cache_10yr"
+        cache_name = ".openmeteo_cache_8yr10mo"
         expected_rows = 77448
     else:
         start_date = date.fromisoformat(args.start) if args.start else START_DATE

@@ -31,8 +31,7 @@ Two regimes share this protocol, branched by which CSV file is passed
     earlier (verified by probe 2026-11-09). The test window is IDENTICAL
     in calendar terms to the 1-year file's full span, but the training
     pool is ~8.7x larger — that is the scale-up comparison. The yearly
-    files are canonical: the old combined
-    data/atlanta_weather_archive_10yr.csv was exactly their
+    files are canonical: the old combined single file was exactly their
     concatenation and was removed because a single 7.15 MB file exceeded
     the GitHub snapshot upload size limit (HTTP 413).
 """
@@ -72,7 +71,6 @@ LONG_YEAR_ROWS = {2018: 8760, 2019: 8760, 2020: 8784, 2021: 8760,
                   2022: 8760, 2023: 8760, 2024: 8784, 2025: 8760, 2026: 7320}
 LONG_TOTAL_ROWS = 77448
 LONG_YEAR_PATTERN = re.compile(r"atlanta_weather_archive_20\d\d\.csv$")
-LEGACY_LONG_NAME = "atlanta_weather_archive_10yr.csv"
 
 
 def long_year_files(data_dir=None):
@@ -85,15 +83,15 @@ def long_year_files(data_dir=None):
 
 
 def is_long_archive_path(path):
-    """True if `path` refers to the long archive: a yearly file, the
-    legacy combined filename, or a directory containing the yearly files."""
+    """True if `path` refers to the long archive: a yearly file, or a
+    directory containing the yearly files."""
     if path is None:
         return False
     p = str(path)
     if os.path.isdir(p):
         return True
     name = os.path.basename(p)
-    return bool(LONG_YEAR_PATTERN.match(name)) or name == LEGACY_LONG_NAME
+    return bool(LONG_YEAR_PATTERN.match(name))
 
 
 def load_long_archive(data_dir=None):

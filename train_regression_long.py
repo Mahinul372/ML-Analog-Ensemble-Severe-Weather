@@ -16,9 +16,9 @@ exclusion, training pool only. Scores: RMSE on the ensemble mean,
 CRPS via properscoring.crps_ensemble over the 15 members.
 
 Outputs:
-  models/deep_anen_regression_weights_10yr.pth  (binary checkpoint)
-  models/deep_anen_regression_weights_10yr.json (text-safe state dict)
-  metrics/deep_anen_regression_metrics_10yr.json
+  models/deep_anen_regression_weights_8yr10mo.pth  (binary checkpoint)
+  models/deep_anen_regression_weights_8yr10mo.json (text-safe state dict)
+  metrics/deep_anen_regression_metrics_8yr10mo.json
   metrics/long_regression_errors.npz  (per-event raw/obs/members, for DM tests)
 
 Usage: python train_regression_long.py
@@ -188,11 +188,11 @@ def main():
         "target_scaler_mean": target_scaler.mean_.tolist(),
         "target_scaler_scale": target_scaler.scale_.tolist(),
         "history": history,
-    }, os.path.join(HERE, "models", "deep_anen_regression_weights_10yr.pth"))
+    }, os.path.join(HERE, "models", "deep_anen_regression_weights_8yr10mo.pth"))
 
     weights_json = {k: v.cpu().tolist() for k, v in encoder.state_dict().items()}
     with open(os.path.join(HERE, "models",
-                           "deep_anen_regression_weights_10yr.json"), "w") as f:
+                           "deep_anen_regression_weights_8yr10mo.json"), "w") as f:
         json.dump({"config": {"input_dim": 4, "hidden_dim": 32, "latent_dim": 16,
                               "dropout": 0.2, "epochs": EPOCHS, "lr": LR, "K": K,
                               "regime": "long"},
@@ -210,14 +210,14 @@ def main():
         "crps_skill_pct": round(skill_crps, 1),
     }
     with open(os.path.join(HERE, "metrics",
-                           "deep_anen_regression_metrics_10yr.json"), "w") as f:
+                           "deep_anen_regression_metrics_8yr10mo.json"), "w") as f:
         json.dump(metrics, f, indent=2)
 
     np.savez(os.path.join(HERE, "metrics", "long_regression_errors.npz"),
              timestamps=np.array([str(t) for t in storms["timestamp"]]),
              raw_fcst=raw_fcst, obs=obs, members=anen_members)
-    print("\nSaved: models/deep_anen_regression_weights_10yr.pth/.json, "
-          "metrics/deep_anen_regression_metrics_10yr.json, "
+    print("\nSaved: models/deep_anen_regression_weights_8yr10mo.pth/.json, "
+          "metrics/deep_anen_regression_metrics_8yr10mo.json, "
           "metrics/long_regression_errors.npz")
     print(json.dumps(metrics, indent=2))
 

@@ -650,18 +650,18 @@ is robust to archive length.
   observed gust ≥ 35 km/h — **1,286 timestamps** (vs 130 in the 1-year
   regime). All four methods loop over this exact list.
 - **Models:** the long-archive weights reloaded here (never retrained
-  here) — `models/deep_anen_regression_weights_10yr.pth` (encoder
+  here) — `models/deep_anen_regression_weights_8yr10mo.pth` (encoder
   retrained from scratch on the 59,928-row training split, 30 epochs)
-  and `models/deep_anen_triplet_weights_10yr.pth` (LSTM retrained from
+  and `models/deep_anen_triplet_weights_8yr10mo.pth` (LSTM retrained from
   scratch on the long sequence pool, same per-epoch triplet budget as
   Phase 4). Traditional AnEn needs no weights.
 - **Protocol identical to §2:** K = 15, ±168 h exclusion, analogs from
   the training pool only, same four standardized predictors, same
   scores. The recomputed numbers below are checked against the saved
   long-archive metric files
-  (`metrics/traditional_anen_metrics_10yr.json`,
-  `metrics/deep_anen_regression_metrics_10yr.json`,
-  `metrics/deep_anen_triplet_metrics_10yr.json`)."""))
+  (`metrics/traditional_anen_metrics_8yr10mo.json`,
+  `metrics/deep_anen_regression_metrics_8yr10mo.json`,
+  `metrics/deep_anen_triplet_metrics_8yr10mo.json`)."""))
 
 # ---------------------------------------------------------------- 11. §5 code
 cells.append(nbf.v4.new_code_cell("""# --- Long-archive evaluation: all four methods on the IDENTICAL 1,286 events --
@@ -684,7 +684,7 @@ feat_scaler_long = fit_feature_scaler(train_long)
 trad_long = TraditionalAnalogEnsemble(df_long, regime="long")
 
 # Deep-AnEn-Regression: long-archive encoder from saved weights.
-ckpt_long = torch.load("models/deep_anen_regression_weights_10yr.pth",
+ckpt_long = torch.load("models/deep_anen_regression_weights_8yr10mo.pth",
                        map_location=DEVICE, weights_only=True)
 encoder_long = DeepAnalogRegressionEncoder().to(DEVICE)
 encoder_long.load_state_dict(ckpt_long["encoder_state_dict"])
@@ -724,7 +724,7 @@ def regression_long_find_analogs(target_timestamp, K=K):
 
 # Deep Analog (Hu et al., 2023): long-archive triplet checkpoint.
 triplet_long_model, triplet_long_ckpt = load_triplet_model(
-    "models/deep_anen_triplet_weights_10yr.pth", DEVICE)
+    "models/deep_anen_triplet_weights_8yr10mo.pth", DEVICE)
 print(f"Loaded long Deep Analog (Hu et al., 2023) weights (best epoch "
       f"{triplet_long_ckpt['history']['best_epoch']}, "
       f"val loss {triplet_long_ckpt['history']['best_val_loss']:.4f})")
@@ -798,9 +798,9 @@ print(f"Best CRPS (long): {min(scores_long, key=lambda m: scores_long[m][1])} "
       f"({min(v[1] for v in scores_long.values()):.2f} km/h)")
 
 # --- Consistency check against the saved long-archive metric files -----------
-saved_trad_long = json.load(open("metrics/traditional_anen_metrics_10yr.json"))
-saved_reg_long = json.load(open("metrics/deep_anen_regression_metrics_10yr.json"))
-saved_trip_long = json.load(open("metrics/deep_anen_triplet_metrics_10yr.json"))
+saved_trad_long = json.load(open("metrics/traditional_anen_metrics_8yr10mo.json"))
+saved_reg_long = json.load(open("metrics/deep_anen_regression_metrics_8yr10mo.json"))
+saved_trip_long = json.load(open("metrics/deep_anen_triplet_metrics_8yr10mo.json"))
 assert abs(scores_long["Traditional AnEn"][0]
            - saved_trad_long["rmse_traditional_anen_kmh"]) < 0.05, \\
     "Long Traditional AnEn RMSE mismatch!"
@@ -820,7 +820,7 @@ assert abs(scores_long["Deep Analog (Hu et al., 2023)"][1]
            - saved_trip_long["crps_kmh"]) < 0.05, \\
     "Long Deep Analog (Hu et al., 2023) CRPS mismatch!"
 print("\\nConsistency check passed: recomputed long-regime scores match the "
-      "saved _10yr metric files.")
+      "saved _8yr10mo metric files.")
 
 comparison_long = {
     "n_test_storm_events": int(len(EVENT_TIMESTAMPS_LONG)),
@@ -837,7 +837,7 @@ comparison_long = {
         for name, v in scores_long.items() if name != "Raw NWP"
     },
 }
-with open("metrics/comparison_metrics_10yr.json", "w") as f:
+with open("metrics/comparison_metrics_8yr10mo.json", "w") as f:
     json.dump(comparison_long, f, indent=2)
 print(json.dumps(comparison_long, indent=2))"""))
 
@@ -1073,19 +1073,19 @@ for the 1-year triplet run, from the training log).
 
 **Deep-AnEn-Regression, 1-year (30 epochs, MSE on standardized gust):**
 
-![Deep-AnEn-Regression train/val loss, 1-year](plots/train_val_loss_regression_1yr.svg)
+![Deep-AnEn-Regression train/val loss, 1-year](../plots/train_val_loss_regression_1yr.svg)
 
 **Deep-AnEn-Regression, long archive (30 epochs, MSE on standardized gust):**
 
-![Deep-AnEn-Regression train/val loss, long archive](plots/train_val_loss_regression_10yr.svg)
+![Deep-AnEn-Regression train/val loss, long archive](../plots/train_val_loss_regression_8yr10mo.svg)
 
 **Deep Analog (Hu et al., 2023), 1-year (100 epochs, triplet margin loss):**
 
-![Deep Analog train/val loss, 1-year](plots/train_val_loss_triplet_1yr.svg)
+![Deep Analog train/val loss, 1-year](../plots/train_val_loss_triplet_1yr.svg)
 
 **Deep Analog (Hu et al., 2023), long archive (100 epochs max, triplet margin loss):**
 
-![Deep Analog train/val loss, long archive](plots/train_val_loss_triplet_10yr.svg)
+![Deep Analog train/val loss, long archive](../plots/train_val_loss_triplet_8yr10mo.svg)
 
 **What to look for.** Overfitting would show as a training loss that
 keeps falling while the validation loss turns up and diverges. None of
@@ -1157,14 +1157,14 @@ for p in ["plots/4way_method_comparison_timeseries.png",
           "plots/dual_regime_rmse_crps_barchart.svg",
           "plots/train_val_loss_regression_1yr.png",
           "plots/train_val_loss_regression_1yr.svg",
-          "plots/train_val_loss_regression_10yr.png",
-          "plots/train_val_loss_regression_10yr.svg",
+          "plots/train_val_loss_regression_8yr10mo.png",
+          "plots/train_val_loss_regression_8yr10mo.svg",
           "plots/train_val_loss_triplet_1yr.png",
           "plots/train_val_loss_triplet_1yr.svg",
-          "plots/train_val_loss_triplet_10yr.png",
-          "plots/train_val_loss_triplet_10yr.svg",
+          "plots/train_val_loss_triplet_8yr10mo.png",
+          "plots/train_val_loss_triplet_8yr10mo.svg",
           "metrics/comparison_metrics.json",
-          "metrics/comparison_metrics_10yr.json",
+          "metrics/comparison_metrics_8yr10mo.json",
           "metrics/dual_regime_comparison.json",
           "metrics/dm_tests.json"]:
     print(f"  {p} ({os.path.getsize(p)/1024:.1f} KB)")"""))

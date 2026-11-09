@@ -6,12 +6,12 @@ Overfitting evidence for the journal submission (mandatory). Sources:
     Phase 2 checkpoint (models/deep_anen_regression_weights.pth,
     "history" key). Recovered — no retraining.
   * Deep-AnEn-Regression, long archive: per-epoch train/val MSE saved in
-    the long checkpoint (models/deep_anen_regression_weights_10yr.pth).
+    the long checkpoint (models/deep_anen_regression_weights_8yr10mo.pth).
   * Deep Analog triplet, 1-year: per-epoch train/val triplet loss parsed
     from ~/workspace/phase4_train.log (100 epochs). Recovered — no
     retraining.
   * Deep Analog triplet, long archive: per-epoch train/val triplet loss
-    from the long checkpoint (models/deep_anen_triplet_weights_10yr.pth),
+    from the long checkpoint (models/deep_anen_triplet_weights_8yr10mo.pth),
     saved on every validation improvement during training. Available
     only after the long triplet run finishes.
 
@@ -26,7 +26,7 @@ Outputs (per curve):
 
 Usage:
     python plot_loss_curves.py            # generate every available curve
-    python plot_loss_curves.py --only triplet_10yr
+    python plot_loss_curves.py --only triplet_8yr10mo
 """
 
 import argparse
@@ -93,18 +93,18 @@ CURVES = {
         "Deep-AnEn-Regression", "1-year", "MSE (standardized gust)",
         lambda: _history_from_pth(os.path.join(
             HERE, "models", "deep_anen_regression_weights.pth"))),
-    "regression_10yr": (
+    "regression_8yr10mo": (
         "Deep-AnEn-Regression", "long archive", "MSE (standardized gust)",
         lambda: _history_from_pth(os.path.join(
-            HERE, "models", "deep_anen_regression_weights_10yr.pth"))),
+            HERE, "models", "deep_anen_regression_weights_8yr10mo.pth"))),
     "triplet_1yr": (
         "Deep Analog (Hu et al., 2023)", "1-year", "Triplet margin loss",
         lambda: _triplet_history_from_log(os.path.join(
             WORKSPACE, "phase4_train.log"))),
-    "triplet_10yr": (
+    "triplet_8yr10mo": (
         "Deep Analog (Hu et al., 2023)", "long archive", "Triplet margin loss",
         lambda: _history_from_pth(os.path.join(
-            HERE, "models", "deep_anen_triplet_weights_10yr.pth"))),
+            HERE, "models", "deep_anen_triplet_weights_8yr10mo.pth"))),
 }
 
 

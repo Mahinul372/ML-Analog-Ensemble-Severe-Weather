@@ -21,7 +21,7 @@ Usage:
     python traditional_anen.py            # evaluate + save metrics JSON (1-year)
     python traditional_anen.py --demo     # also print one worked example
     python traditional_anen.py --archive data/atlanta_weather_archive_2018.csv \
-        --metrics-out metrics/traditional_anen_metrics_10yr.json \
+        --metrics-out metrics/traditional_anen_metrics_8yr10mo.json \
         --errors-out metrics/long_traditional_errors.npz
         # long-archive run: any yearly file (or the data directory) loads
         # the nine yearly files concatenated; splits branch by regime (see data_prep)
