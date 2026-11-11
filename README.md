@@ -57,7 +57,7 @@ Verification: the comparison notebook audits both regimes — 5,850 (1-year) and
 
 ![Dual-regime RMSE / CRPS benchmark](plots/dual_regime_rmse_crps_barchart.svg)
 
-## Nested-archive experiment (reviewer revision)
+## Nested-archive experiment : 
 
 The 1-year vs 8-years-10-months comparison changed the test period along with the training archive, so archive size and test difficulty were confounded. The nested experiment fixes the test period (2025-11-01 → 2026-11-01; 1,286 high-gust events, 81 independent episodes) and the validation period (Oct 2025) for all four archives and varies only the training length (1 / 3 / 5 / 8 years, identical cutoff 2025-09-30). The 8-year archive uses the forecast data available from the source, beginning 1 January 2018. Details, calibration, bootstrap CIs and the audit: `notebooks/nested_archive_analysis.ipynb`.
 
