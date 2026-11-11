@@ -110,7 +110,7 @@ python -m nbconvert --to notebook --execute --inplace notebooks/comparison_analy
 
 The notebook re-runs all four methods from the saved checkpoints and re-verifies both audits; no retraining is needed. PNG figures and `.pth` weights are committed in local git only — the GitHub snapshot connector is text-only — so the repo carries SVG figures and JSON state dicts instead; running the notebook regenerates the PNGs and `.pth` files locally.
 
-Nested-archive experiment (reviewer revision):
+Nested-archive experiment :
 
 ```bash
 python mos_baseline.py                                     # MOS baseline, all 4 archives
